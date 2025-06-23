@@ -1,0 +1,26 @@
+{
+    "id": "2FB2B226",
+    "path": "~/earthlinks/app/view/blueprint.R",
+    "project_path": "app/view/blueprint.R",
+    "type": "r_source",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1750692740427.0,
+    "source_on_save": false,
+    "relative_order": 4,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "45,35",
+        "scrollLine": "27"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1750696977,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1750696977754,
+    "read_only": false,
+    "read_only_alternatives": []
+}
