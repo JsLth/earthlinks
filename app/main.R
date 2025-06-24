@@ -18,8 +18,7 @@ ui <- function(id) {
 
 #' @export
 server <- function(id) {
-  ns <- NS(id)
   moduleServer(id, function(input, output, session) {
-    blueprint$server(ns("blueprint"))
+    blueprint$server("blueprint")
   })
 }
