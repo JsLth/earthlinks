@@ -1,4 +1,12 @@
 # This file allows packrat (used by rsconnect during deployment) to pick up dependencies.
+library(bsicons)
+library(fansi)
+library(gxc)
+library(leaflet)
+library(lorem)
 library(rhino)
+library(sf)
+library(shinyFeedback)
+library(shinyWidgets)
 library(treesitter)
 library(treesitter.r)

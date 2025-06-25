@@ -16,3 +16,12 @@ if (nzchar(system.file(package = "box.lsp"))) {
     )
   )
 }
+
+
+make_sasser <- function() {
+  callr::r_bg(function() {
+    rhino::build_sass(watch = TRUE)
+  })
+}
+
+sasser <- make_sasser()

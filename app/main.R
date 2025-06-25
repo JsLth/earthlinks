@@ -1,9 +1,13 @@
 box::use(
   shiny[...],
+  sever[sever, useSever],
+  shinyFeedback[useShinyFeedback]
 )
 
 box::use(
-  app/view/blueprint,
+  app/view/layout,
+  
+  app/logic/modals[send_info]
 )
 
 
@@ -11,7 +15,9 @@ box::use(
 ui <- function(id) {
   ns <- NS(id)
   bootstrapPage(
-    blueprint$ui(ns("blueprint"))
+    useSever(),
+    useShinyFeedback(),
+    layout$ui(ns("layout")),
   )
 }
 
@@ -19,6 +25,11 @@ ui <- function(id) {
 #' @export
 server <- function(id) {
   moduleServer(id, function(input, output, session) {
-    blueprint$server("blueprint")
+    sever()
+    layout$server("layout")
+    
+    observe({
+      send_info("test", popup = TRUE)
+    })
   })
 }
