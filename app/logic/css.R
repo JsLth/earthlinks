@@ -10,8 +10,7 @@ tip <- function(text, id = NULL, title = "Help", ...) {
 
 config <- function(text, id = NULL, title = "Options", ...) {
   bslib::popover(
-    hover_icon("gear", "gear-fill", title = "Further options") |>
-      stop_click_propagation(),
+    hover_icon("gear", "gear-fill", title = "Further options"),
     title = title,
     text,
     ...
