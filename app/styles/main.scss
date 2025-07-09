@@ -73,6 +73,7 @@ body {
 }
 
 
+/* for spaces in inline labels */
 .spacer {
   display: inline-flex;
   align-items: center;
@@ -82,6 +83,26 @@ body {
 }
 
 
+/* fix spacing in inline-flex parents */
+.spacer-inline {
+  display: inline-flex;
+  align-items: center;
+  height: 1em;
+  margin: 0 6px;
+  transform: translateY(0.3em);
+}
+
+
+/* slightly adjusted spacer for toast header */
+.toast-spacer {
+  display: inline-flex;
+  align-items: center;
+  height: 1em;
+  margin: 0 6px;
+}
+
+
+/* vertical bar inside spacers */
 .divider {
   width: 1px;
   height: 100%;
@@ -89,15 +110,73 @@ body {
 }
 
 
+/* change font family of shiny inputs to monospace */
 .code-input .shiny-input-text {
   font-family: monospace;
 }
 
 
+/* add a gap below pseudo-labels */
 .pseudo-label {
   margin-bottom: 5px;
 }
 
+
+.text-expand {
+  overflow: hidden;
+  max-height: 3em; /* show ~2 lines */
+  transition: max-height 0.3s ease;
+}
+
+
+.text-expand.expanded {
+  max-height: 100vh;
+}
+
+
+a.show-more {
+  cursor: pointer;
+  font-weight: bold;
+  user-select: none;
+}
+
+
+div.vertical-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+
+/* Scrollbar track */
+::-webkit-scrollbar {
+  width: 12px;               /* width of the whole scrollbar */
+  height: 12px;              /* height if horizontal scrollbar */
+}
+
+/* Scrollbar track */
+::-webkit-scrollbar-track {
+  background: #f0f0f0;       /* color of the track */
+  border-radius: 10px;
+}
+
+/* Scrollbar thumb */
+::-webkit-scrollbar-thumb {
+  background-color: #888;    /* color of the scroll thumb */
+  border-radius: 10px;       /* roundness */
+  border: 3px solid #f0f0f0; /* creates padding around thumb */
+}
+
+/* Scrollbar thumb on hover */
+::-webkit-scrollbar-thumb:hover {
+  background-color: #555;
+}
+
+/* Firefox */
+.element {
+  scrollbar-width: thin;             /* auto, thin, none */
+  scrollbar-color: #888 #f0f0f0;    /* thumb color and track color */
+}
 
 /* Overwrite bootstrap styling */
 
@@ -106,6 +185,6 @@ body {
 }
 
 
-.html-fill-item {
-  background: black;
+.bslib-page-fill > .html-fill-container {
+  border-top: 1px solid #000 !important;
 }

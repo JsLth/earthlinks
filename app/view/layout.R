@@ -3,14 +3,39 @@ box::use(
   bsicons[bs_icon],
   htmlwidgets[onRender],
   leaflet,
-  sf[st_is, st_transform, st_bbox, st_drivers],
+  sf,
   shiny[...],
+  shinyWidgets[pickerInput],
+  giscoR[gisco_get_nuts],
+  countrycode[countrycode],
+  
 )
 
 box::use(
-  app/logic/css[tip, config, spacer],
-  app/logic/modals[execute_safely],
+  app/logic/widgets,
+  app/logic/modals[execute_safely, with_info, send_error],
+  app/logic/codes[search_param],
+  app/logic/utils[...],
+  app/logic/jsutils[toast, remove_toast, liveCounter],
+  
 )
+
+options(cli.progress_handlers = "cli")
+
+indicators <- c(
+  "2 metre temperature" = "2m_temperature",
+  "Total precipitation" = "total_precipitation",
+  "10 metre U wind component" = "10m_u_component_of_wind",
+  "10 metre V wind component" = "10m_v_component_of_wind",
+  "Leaf area index, high vegetation" = "leaf_area_index_high_vegetation",
+  "Leaf area index, low vegetation" = "leaf_area_index_low_vegetation",
+  "Snowfall" = "snowfall",
+  "Total cloud cover" = "total_cloud_cover",
+  "10 metre wind speed" = "10m_wind_speed"
+)
+
+
+units <- jsonlite::fromJSON("https://codes.ecmwf.int/parameter-database/api/v1/unit/?format=json")
 
 
 theme <- bs_theme(
@@ -21,7 +46,37 @@ theme <- bs_theme(
   warning = "#ffc107",
   danger = "#dc3545",
   base_font = "Source Sans Pro"
-)
+) |>
+  # modal theming that aligns more closely with BS5 docs
+  bs_add_rules("
+    /* make toast background opaque */
+    .toast {
+      --bs-toast-header-bg: rgba(var(--bs-body-bg-rgb), 1) !important;
+      --bs-toast-bg: rgba(var(--bs-body-bg-rgb), 1) !important;
+    }
+    
+    /* enforce denser modal styling */
+    .modal-footer, .modal-body {
+      padding: calc((var(--bs-modal-padding) - var(--bs-modal-footer-gap) * .5)) !important
+    }
+    
+    .modal-content {
+      border-width: var(--bs-modal-border-width, 1px);
+      border-color: var(--bs-modal-border-color, rgba(0, 0, 0, 0.2));
+      border-radius: var(--bs-modal-border-radius, 0.3rem);
+    }
+    
+    .modal {
+      --bs-modal-header-border-width: 1px;
+      --bs-modal-header-border-color: #dee2e6;
+      --bs-modal-header-padding: 0.5rem 1rem;
+      --bs-modal-inner-border-radius: calc(0.3rem - 1px);
+      --bs-modal-border-width: 1px;
+      --bs-modal-border-color: rgba(0, 0, 0, 0.2);
+      --bs-modal-border-radius: 0.3rem;
+      --bs-modal-width: 700px !important;
+    }
+  ")
 
 
 ui <- function(id) {
@@ -38,6 +93,8 @@ ui <- function(id) {
     collapsible = FALSE,
     lang = "en",
     theme = theme,
+    
+    # Navbar ----
     nav_panel_hidden(
       id = ns("nav-panel-main"),
       "Link",
@@ -77,6 +134,8 @@ ui <- function(id) {
         )
       )
     ),
+    
+    # Sidebar ----
     sidebar = sidebar(
       id = ns("sidebar"),
       open = "desktop",
@@ -87,20 +146,26 @@ ui <- function(id) {
         open = c(ns("intro"), ns("input")),
         multiple = TRUE,
 
+        ## What is EarthLinks? ----
         accordion_panel(
           title = tags$b("What is EarthLinks?"),
           value = ns("intro"),
           lorem::ipsum(1, sentences = 3)
         ),
 
+        ## Input data ----
         accordion_panel(
           title = tags$b("Input data"),
           value = ns("input"),
-          span(
-            class = "pseudo-label",
-            tags$b("Upload a GIS file"),
-            spacer(),
-            tip(HTML(paste(
+          
+          ### File input ----
+          widgets$helpful_widget(
+            fileInput(
+              ns("file"),
+              label = NULL
+            ),
+            label = "Upload a GIS file",
+            tip = widgets$tip(HTML(paste(
               "You can browse your local or drag-and-drop a file that contains",
               "the spatial units that you want to link with. These spatial units",
               "can either be points or polygons. Please note that the data must be",
@@ -110,8 +175,7 @@ ui <- function(id) {
               "<a href='https://gdal.org/en/stable/drivers/raster/index.html'>GDAL</a>",
               "(e.g., SHP, GeoJSON, GeoPackage)."
             ))),
-            spacer(),
-            config(
+            config = widgets$config(
               div(
                 div(
                   class = "code-input",
@@ -131,14 +195,146 @@ ui <- function(id) {
                 selectInput(
                   ns("driver"),
                   label = "What driver to use for reading?",
-                  choices = c("Guess the driver", st_drivers()$name)
+                  choices = c("Guess the driver", sf$st_drivers()$name)
                 )
               )
             )
           ),
-          fileInput(
-            ns("file"),
-            label = NULL
+          
+          ### Flat date ----
+          shinyjs::hidden(
+            widgets$helpful_widget(
+              id = ns("flate_date_container"),
+              dateInput(ns("flat_date"), label = NULL),
+              label = "Please select a flat date",
+              tip = widgets$tip(tagList(
+                p(
+                  "The dataset you have loaded does not contain a date vector
+                  in your specified date field. You can choose to either:"
+                ),
+                br(),
+                tags$ul(
+                  tags$li("Specify a flat date for all data points using this input"),
+                  tags$li("Specify the column name where your time data is stored. Click the", bsicons::bs_icon("gear"), "icon next to the data input to specify a date column.")
+                )
+              ))
+            )
+          ),
+          
+          ### Example data ----
+          widgets$helpful_widget(
+            actionButton(
+              ns("example_data"),
+              label = tagList(
+                bsicons::bs_icon("file-earmark-spreadsheet"),
+                "Load example data"
+              )
+            ),
+            label = "Just want to look around? No worries!",
+            tip = widgets$tip(HTML(
+              "By clicking on this button, you will load pre-processed
+              example data from the <a href='https://www.europeansocialsurvey.org/'>
+              European Social Survey</a> (ESS) that you can use to try out
+              the functions of this app. You can always go back to load
+              your own dataset by selecting a file."
+            ))
+          )
+        ),
+        
+        ## Indicator selection ----
+        accordion_panel(
+          title = tags$b("Indicator selection"),
+          value = ns("indicator_select"),
+          
+          # widgets$helpful_widget(
+          #   pickerInput(
+          #     ns("data_provider"),
+          #     choices = list(
+          #       "Copernicus" = "ecmwfr"
+          #     )
+          #   ),
+          #   label = tags$b("Select a data provider"),
+          #   tip = widgets$tip("Test")
+          # )
+          
+          ### Time level ----
+          widgets$helpful_widget(
+            radioButtons(
+              ns("time_level"),
+              label = NULL,
+              choices = list(
+                "Daily" = "daily",
+                "Monthly" = "monthly"
+              )
+            ),
+            label = "Select a time aggregation level",
+            tip = widgets$tip(
+              div(
+                "This option lets you choose how the climate statistics are
+                grouped over time",
+                tags$ul(
+                  tags$li(tags$b("Daily:"), paste(
+                    "Data is shown for each individual day. Use this when",
+                    "you need detailed, day-by-day variation"
+                  )),
+                  tags$li(tags$b("Monthly:"), paste(
+                    "Data is averaged or summed over each month. This is",
+                    "useful for spotting longer-term trends and reducing",
+                    "daily noise."
+                  ))
+                )
+              )
+            )
+          ),
+          
+          ### ERA-Land ----
+          widgets$helpful_widget(
+            checkboxInput(ns("land"), label = NULL, value = TRUE, width = "auto"),
+            label = "Only include land areas?",
+            tip = widgets$tip(div(HTML(
+              "Tick this box to use land-only data. When selected, the data
+              comes from ERA5-Land, which provides higher-resolution climate
+              information from <b>land surfaces only</b>. Otherwise, the data
+              includes both <b>land and ocean areas</b> using the standard
+              ERA5 dataset."
+            ))),
+            inline = TRUE
+          ),
+          
+          ### Indicator ----
+          widgets$helpful_widget(
+            selectInput(
+              ns("indicator"),
+              label = NULL,
+              choices = unname(invert(indicators)[
+                gxc:::allowed_indicators_by_catalogue$`derived-era5-land-daily-statistics`
+              ])
+            ),
+            label = "Select an indicator",
+            tip = widgets$tip(div(HTML(
+              "Select the earth observation indicator you want to link. The
+              available indicators you can select depend on the choices in
+              data provider, data catalogue and other options above.<br>
+              <i>Note:</i> Some indicators are averaged over time (e.g.,
+              temperature), while others are summed (e.g., precipitation),
+              depending on their nature and the selected time aggregation
+              level."
+            )))
+          ),
+          
+          uiOutput(ns("indicator_desc"))
+        ),
+        
+        ## Finalize ----
+        accordion_panel(
+          title = tags$b("Finalize"),
+          value = ns("finalize"),
+          bslib::input_task_button(
+            ns("do_link"),
+            label = "Download and link",
+            icon = bsicons::bs_icon("lightning-charge-fill"),
+            label_busy = "Linking...",
+            type = "default"
           )
         )
       )
@@ -149,18 +345,194 @@ ui <- function(id) {
 
 server <- function(id) {
   moduleServer(id, function(input, output, session) {
-    .data <- reactive({
-      req(input$file)
+    cli::cli_inform("test")
+    
+    toast(
+      "Thanks for using EarthLinks!",
+      title = "App successfully started",
+      type = "success",
+      delay = 6000
+    )
+    
+    .data <- reactiveVal(NULL)
+    
+    
+    # Read input data ----
+    observe(execute_safely({
       path <- input$file$datapath
 
       if (identical(tools::file_ext(path), "rds")) {
-        readRDS(path)
+        new <- readRDS(path)
       } else {
-        sf::read_sf(path)
+        new <- sf$read_sf(path)
+      }
+      
+      .data(new)
+    })) |>
+      bindEvent(input$file)
+    
+    
+    # Load example data ----
+    observe(execute_safely({
+      new <- utils::read.csv("app/static/ESS11-subset.csv")[c("cntry", "wrclmch")]
+      new <- stats::aggregate(wrclmch ~ cntry, new, mean)
+      countries <- unique(new$cntry)
+      geom <- gisco_get_nuts(
+        year = "2024",
+        resolution = "60",
+        spatialtype = "RG",
+        nuts_level = "0",
+        country = countrycode(countries, origin = "iso2c", destination = "iso3c")
+      )["geo"]
+      new <- merge(new, geom, by.x = "cntry", by.y = "geo")
+      new <- sf$st_as_sf(new)
+      new <- sf$st_transform(new, 4326)
+      new <- suppressWarnings(sf$st_intersection(
+        new,
+        sf$st_as_sfc(sf$st_bbox(c(
+          xmin = -25,
+          ymin = 30,
+          xmax = 40,
+          ymax = 70
+        ), crs = sf$st_crs(4326)))
+      ))
+      names(new) <- c("country", "climate_concern", "geometry")
+      new$date <- as.POSIXct("2023-01-01")
+      .data(new)
+    })) |>
+      bindEvent(input$example_data)
+
+    
+    # Show/hide flat date input ----
+    observe({
+      if (!input$date_column %in% names(.data())) {
+        shinyjs::show("flate_date_container", anim = TRUE)
+      } else {
+        shinyjs::hide("flat_date_container", anim = TRUE)
+      }
+    }) |>
+      bindEvent(.data())
+    
+    
+    # Choose catalogue ----
+    catalogue <- reactive({
+      if (input$land) {
+        switch(
+          input$time_level,
+          daily = "derived-era5-land-daily-statistics",
+          monthly = "reanalysis-era5-land-monthly-means"
+        )
+      } else {
+        switch(
+          input$time_level,
+          daily = "derived-era5-single-levels-daily-statistics",
+          monthly = "reanalysis-era5-single-levels-monthly-means"
+        )
       }
     })
 
+    
+    param_meta <- reactive({
+      meta <- search_param(input$indicator)
+      meta$unit <- units[units$id %in% meta$unit_id, ]$name
+      meta
+    })
+    
+    
+    # Show indicator description ----
+    output$indicator_desc <- renderUI({
+      desc <- search_param(input$indicator)$description
+      widgets$callout(widgets$show_more(HTML(desc)))
+    })
+    
+    
+    # Update indicator selection ----
+    observe({
+      new_choices <- gxc:::allowed_indicators_by_catalogue[[catalogue()]]
+      new_choices <- unname(invert(indicators)[new_choices])
+      selected <- isolate(input$indicator)
+      if (!selected %in% new_choices) {
+        selected <- NULL
+      }
 
+      updateSelectInput(
+        session,
+        "indicator",
+        choices = new_choices,
+        selected = selected
+      )
+    })
+    
+    
+    # Perform linking ----
+    linked <- reactive(execute_safely({
+      req_else(.data(), toast(
+        message = HTML("Please provide a dataset before trying to link.<br>
+          You can do this by navigating to \"Input data\" and either
+          selecting data from a file or loading up our example dataset."),
+        type = "danger"
+      ))
+      
+      toast(
+        tagList(
+          p(
+            "Linking can take a while! Depending on the size of your data and request,
+            this can range from about half a minute to a few hours. Maybe get a
+            coffee or take a walk."
+          ),
+          liveCounter()
+        ),
+        autohide = FALSE,
+        id = "link_idle"
+      )
+      
+      indicator <- indicators[[input$indicator]]
+      .data <- .data()
+      date <- if (!input$date_column %in% names(.data)) {
+        .data[[input$date_column]] <- input$flat_date
+      }
+      
+      out <- execute_safely(
+        {
+          if (identical(input$time_level, "daily")) {
+            gxc::link_daily(
+              .data = .data,
+              indicator = indicator,
+              date_var = input$date_column,
+              catalogue = catalogue()
+            )
+          } else {
+            gxc::link_monthly(
+              .data = .data,
+              indicator = indicator,
+              date_var = input$date_column,
+              catalogue = catalogue()
+            )
+          }
+        },
+        error_fun = function(e) {
+          send_error(
+            tagList(
+              p("The data provider returned the following error message:"),
+              tags$blockquote(e$message),
+              p("This is can either be a problem with the API (e.g., server
+              problems, problems with your account) or with your data.
+              Check if the spatial and temporal extent of your input data
+              is plausible and then retry.")
+            ),
+            size = "m",
+            title = "Error during linking"
+          )
+        }
+      )
+      
+      remove_toast("link_idle")
+      out
+    })) |>
+      bindEvent(input$do_link)
+    
+    
+    # Render base map ----
     output$map <- leaflet$renderLeaflet({
       leaflet$leaflet(options = leaflet$leafletOptions(zoomControl = FALSE)) |>
         leaflet$addProviderTiles("CartoDB.DarkMatter", group = "Dark") |>
@@ -177,10 +549,14 @@ server <- function(id) {
     })
 
 
-    observe({
-      .data <- st_transform(.data(), 4326)
-      bbox <- st_bbox(.data)
-      proxy <- leaflet$leafletProxy("map", data = .data)
+    # Add input data to map ----
+    observe(execute_safely({
+      req(.data())
+      .data <- sf$st_transform(.data(), 4326)
+      bbox <- sf$st_bbox(.data)
+      proxy <- leaflet$leafletProxy("map", data = .data) |>
+        leaflet$clearShapes() |>
+        leaflet$clearControls()
 
       leaflet$flyToBounds(
         proxy,
@@ -190,24 +566,25 @@ server <- function(id) {
         lat2 = bbox[["ymax"]]
       )
 
-      if (all(st_is(.data, c("POLYGON", "MULTIPOLYGON")))) {
+      if (all(sf$st_is(.data, c("POLYGON", "MULTIPOLYGON")))) {
         leaflet$addPolygons(
           proxy,
           weight = 1,
           color = "black",
           fill = TRUE,
-          fillOpacity = 0,
+          fillColor = "white",
+          fillOpacity = 0.001,
           opacity = 0.5,
           highlightOptions = leaflet$highlightOptions(
             weight = 2,
             color = "black",
             opacity = 0.5,
-            fillOpacity = 0.5,
+            fillOpacity = 0.001,
             bringToFront = TRUE,
             sendToBack = TRUE
           )
         )
-      } else if (all(st_is(.data, c("POINT", "MULTIPOINT")))) {
+      } else if (all(sf$st_is(.data, c("POINT", "MULTIPOINT")))) {
         leaflet$addCircleMarkers(
           proxy,
           weight = 1,
@@ -215,6 +592,68 @@ server <- function(id) {
           opacity = 0.5
         )
       }
-    })
+    }))
+    
+    
+    # Add linked data to map ----
+    observe(execute_safely({
+      req(linked())
+      .data <- sf$st_transform(linked(), 4326)
+      bbox <- sf$st_bbox(.data)
+      proxy <- leaflet$leafletProxy("map", data = .data) |>
+        leaflet$clearShapes() |>
+        leaflet$clearControls()
+      
+      leaflet$flyToBounds(
+        proxy,
+        lng1 = bbox[["xmin"]],
+        lat1 = bbox[["ymin"]],
+        lng2 = bbox[["xmax"]],
+        lat2 = bbox[["ymax"]]
+      )
+      
+      palette <- leaflet$colorBin(palette = "viridis", domain = .data$.linked)
+      
+      if (all(sf$st_is(.data, c("POLYGON", "MULTIPOLYGON")))) {
+        leaflet$addPolygons(
+          proxy,
+          weight = 1,
+          color = "black",
+          fill = TRUE,
+          fillColor = ~palette(.linked),
+          fillOpacity = 0.8,
+          opacity = 0.5,
+          highlightOptions = leaflet$highlightOptions(
+            weight = 2,
+            color = "black",
+            opacity = 0.1,
+            fillOpacity = 1,
+            bringToFront = TRUE,
+            sendToBack = TRUE
+          )
+        )
+      } else if (all(sf$st_is(.data, c("POINT", "MULTIPOINT")))) {
+        leaflet$addCircleMarkers(
+          proxy,
+          weight = 1,
+          color = ~palette(.linked),
+          fill = TRUE,
+          fillColor = ~.linked,
+          opacity = 0.5
+        )
+      }
+      
+      leaflet$addLegend(
+        proxy,
+        "bottomright",
+        pal = palette,
+        values = ~.linked,
+        title = paste(
+          isolate(input$indicator),
+          sprintf("(in %s)", isolate(param_meta()$unit))
+        ),
+        opacity = 1
+      )
+    }))
   })
 }

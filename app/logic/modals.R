@@ -4,6 +4,11 @@ box::use(
 )
 
 
+box::use(
+  app/logic/jsutils[toast],
+)
+
+
 #' Execute expression safely in server
 #' @description
 #' Errors in a server environment usually lead to the Shiny app crashing. To
@@ -23,12 +28,13 @@ box::use(
 execute_safely <- function(expr,
                            title = "Oops!",
                            message = NULL,
-                           disrupt = FALSE,
                            stopOperation = TRUE,
+                           error_fun = NULL,
+                           ...,
                            session = getDefaultReactiveDomain()) {
   message <- message %||% HTML(paste0(
     "Something went wrong! If this keeps happening, consider ",
-    "opening a <a href='https://github.com/JsLth/gretan/issues'>Github ",
+    "opening a <a href='https://github.com/jslth/earthlinks/issues'>Github ",
     "issue</a> or email the tool maintainer (",
     "<a href = 'mailto:jonas.lieth@gesis.org'>jonas.lieth@gesis.org</a>)."
   ))
@@ -39,12 +45,7 @@ execute_safely <- function(expr,
       withCallingHandlers(
         expr = expr,
         warning = function(w) {
-          shinyFeedback::showToast(
-            type = "warning",
-            message = w$message,
-            title = "Warning!",
-            session = session
-          )
+          toast(message = w$message, type = "warning", session = session)
         }
       )
     },
@@ -52,13 +53,18 @@ execute_safely <- function(expr,
       # Stop without error message
       if (inherits(e, "shiny.silent.error")) req(FALSE)
 
-      send_error(div(
-        style = "text-align: left",
-        message,
-        br(), br(),
-        "Error details:", br(),
-        rlang_error_to_html(e, warn = FALSE)
-      ), session = session, title = title)
+      if (is.null(error_fun)) {
+        send_error(div(
+          style = "text-align: left",
+          message,
+          ...,
+          br(), br(),
+          "Error details:", br(),
+          tags$pre(cli_to_html(e, warn = FALSE), style = "max-height: 30vh")
+        ), session = session, title = title, size = "l")
+      } else {
+        error_fun(e)
+      }
       
       # Send error message and then stop
       if (stopOperation) req(FALSE)
@@ -69,65 +75,82 @@ execute_safely <- function(expr,
 }
 
 
+with_info <- function(expr, session = getDefaultReactiveDomain()) {
+  withCallingHandlers(
+    expr,
+    message = function(m) {
+      toast(
+        message = cli_to_html(m),
+        type = "info",
+        title = "Progress update"
+      )
+    }
+  )
+}
+
+
 # Convert ANSI formatting of rlang errors to HTML
-rlang_error_to_html <- function(e, ...) {
+cli_to_html <- function(e, ...) {
   e <- fansi::to_html(format(e), ...)
-  tags$pre(HTML(gsub("\n", "<br>", e)))
+  HTML(gsub("\n", "<br>", e))
 }
 
 
 # Send info message
 send_info <- function(text,
                       title = "Info",
-                      btn_colors = "#5E81AC",
-                      btn_labels = "Got it!",
-                      closeOnClickOutside = FALSE,
+                      btn_type = "info",
+                      btn_label = "Got it!",
+                      size = "m",
                       ...,
                       session = getDefaultReactiveDomain()) {
-  .dots <- list(...)
-  btn_colors <- .dots$btn_colors %||% "#FFCA2B"
-  btn_labels <- .dots$btn_labels %||% "Got it!"
-
   shiny::showModal(shiny::modalDialog(
     text,
     title = title,
-    size = "s"
+    size = size,
+    footer = modalButton(btn_label, type = btn_type)
   ))
 }
 
 # Send error message
 send_error <- function(text,
                        title = "Oops!",
-                       btn_colors = "#BF616A",
-                       btn_labels = "Got it!",
+                       btn_type = "danger",
+                       btn_label = "Got it!",
+                       size = "m",
                        ...,
                        session = getDefaultReactiveDomain()) {
-  .dots <- list(...)
-  btn_colors <- .dots$btn_colors %||% "#FFCA2B"
-  btn_labels <- .dots$btn_labels %||% "Got it!"
-  
   shiny::showModal(shiny::modalDialog(
     text,
     title = title,
-    size = "s"
+    size = size,
+    footer = modalButton(btn_label, type = btn_type)
   ))
 }
 
 
 send_warning <- function(text,
                          title = "Attention!",
-                         btn_colors = "#FFCA2B",
-                         btn_labels = "Got it!",
+                         btn_type = "warning",
+                         btn_label = "Got it!",
+                         size = "m",
                          ...,
                          session = getDefaultReactiveDomain()) {
-  shinyWidgets::sendSweetAlert(
+  shiny::showModal(shiny::modalDialog(
+    text,
     title = title,
-    text = text,
-    type = "warning",
-    html = TRUE,
-    btn_colors = btn_colors,
-    btn_labels = btn_labels,
-    closeOnClickOutside = FALSE,
-    ...
+    size = size,
+    footer = modalButton(btn_label, type = btn_type)
+  ))
+}
+
+
+modalButton <- function(label, icon = NULL, type = "primary") {
+  tags$button(
+    type = "button",
+    class = c("btn", paste0("btn-", type)),
+    `data-dismiss` = "modal",
+    `data-bs-dismiss` = "modal",
+    icon, label
   )
 }
