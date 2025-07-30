@@ -30,6 +30,7 @@ execute_safely <- function(expr,
                            message = NULL,
                            stopOperation = TRUE,
                            error_fun = NULL,
+                           toast = FALSE,
                            ...,
                            session = getDefaultReactiveDomain()) {
   message <- message %||% HTML(paste0(
@@ -54,14 +55,24 @@ execute_safely <- function(expr,
       if (inherits(e, "shiny.silent.error")) req(FALSE)
 
       if (is.null(error_fun)) {
-        send_error(div(
-          style = "text-align: left",
-          message,
-          ...,
-          br(), br(),
-          "Error details:", br(),
-          tags$pre(cli_to_html(e, warn = FALSE), style = "max-height: 30vh")
-        ), session = session, title = title, size = "l")
+        if (!toast) {
+          send_error(div(
+            style = "text-align: left",
+            message,
+            ...,
+            br(), br(),
+            "Error details:", br(),
+            tags$pre(cli_to_html(e, warn = FALSE), style = "max-height: 30vh")
+          ), session = session, title = title, size = "l")
+        } else {
+          toast(
+            message = message,
+            title = title,
+            delay = 10000,
+            type = "danger"
+          )
+        }
+
       } else {
         error_fun(e)
       }
@@ -99,7 +110,7 @@ cli_to_html <- function(e, ...) {
 # Send info message
 send_info <- function(text,
                       title = "Info",
-                      btn_type = "info",
+                      btn_type = "outline-secondary",
                       btn_label = "Got it!",
                       size = "m",
                       ...,
