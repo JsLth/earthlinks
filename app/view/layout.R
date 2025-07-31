@@ -76,6 +76,20 @@ theme <- bs_theme(
       --bs-modal-border-radius: 0.3rem;
       --bs-modal-width: 700px !important;
     }
+
+    /* remove button borders */
+    .accordion {
+      --bs-accordion-btn-focus-box-shadow: rgba(0, 0, 0, 0);
+    }
+
+    .btn {
+      --bs-btn-box-shadow: rgba(0, 0, 0, 0);
+      --bs-btn-focus-box-shadow: rgba(0, 0, 0, 0);
+    }
+
+    .btn-close {
+      --bs-btn-close-focus-shadow: rgba(0, 0, 0, 0)
+    }
   ")
 
 
