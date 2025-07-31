@@ -686,7 +686,7 @@ server <- function(id) {
             div(
               style = "display: flex; align-items: center; gap: 8px;",
               bsicons::bs_icon("calendar-range"),
-              format_daterange(details$end, details$start)
+              format_daterange(details$start, details$end)
             ),
             div(
               style = "display: flex; align-items: center; gap: 8px;",
