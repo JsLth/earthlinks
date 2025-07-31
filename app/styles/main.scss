@@ -178,6 +178,42 @@ div.vertical-stack {
   scrollbar-color: #888 #f0f0f0;    /* thumb color and track color */
 }
 
+
+/* prepend x and y to coordinate selectors */
+.non_gis_geometry .selectize-input .item:first-child::before {
+  content: 'X: ';
+  font-weight: bold;
+  color: #df3545;
+  margin-right: 5px;
+}
+
+
+.non_gis_geometry .selectize-input .item:nth-child(2)::before {
+  content: 'Y: ';
+  font-weight: bold;
+  color: #28a745;
+  margin-right: 5px;
+}
+
+
+.non_gis_geometry .selectize-input {
+  border: 2px solid;
+  border-radius: 8px;
+  min-height: 50px;
+}
+
+
+.non_gis_geometry .selectize-input .item {
+  background: #e9ecef;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin: 2px;
+  font-size: 14px;
+}
+
+
+
 /* Overwrite bootstrap styling */
 
 .nav-underline {

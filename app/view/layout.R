@@ -13,7 +13,7 @@ box::use(
 
 box::use(
   app/logic/widgets,
-  app/logic/modals[execute_safely, with_info, send_error],
+  app/logic/modals[execute_safely, with_info, send_error, send_info],
   app/logic/codes[search_param],
   app/logic/utils[...],
   app/logic/jsutils[toast, remove_toast, liveCounter],
@@ -183,11 +183,12 @@ ui <- function(id) {
               "You can browse your local or drag-and-drop a file that contains",
               "the spatial units that you want to link with. These spatial units",
               "can either be points or polygons. Please note that the data must be",
-              "stored in a common R or GIS format. This can be .rds or",
-              "<a href='https://cran.r-project.org/package=qs2'>qs</a>",
-              "as well as any format that can be read by",
-              "<a href='https://gdal.org/en/stable/drivers/raster/index.html'>GDAL</a>",
-              "(e.g., SHP, GeoJSON, GeoPackage)."
+              "stored in a common R or GIS format. This includes:<br>
+              <ul>
+                <li><b>R files:</b> rds, <a href='https://cran.r-project.org/package=qs2'>qs</a></li>
+                <li><b>Stata or SPSS files:</b> dta, sav, por
+                <li><b>Geospatial files:</b> shp, geojson, gpkg, and others
+              </ul>"
             ))),
             config = widgets$config(
               div(
@@ -212,6 +213,82 @@ ui <- function(id) {
                   choices = c("Guess the driver", sf$st_drivers()$name)
                 )
               )
+            )
+          ),
+          
+          ### Non-GIS file specs ----
+          shinyjs::hidden(
+            div(
+              id = ns("non_gis_file_container"),
+              
+              #### Coordinates ----
+              widgets$helpful_widget(
+                selectizeInput(
+                  ns("non_gis_geometry"),
+                  choices = list(),
+                  multiple = TRUE,
+                  label = NULL,
+                  options = list(
+                    maxItems = 2,
+                    hideSelected = TRUE
+                  )
+                ),
+                label = "Which columns contain coordinates?",
+                tip = widgets$tip(HTML(
+                  "It seems you have loaded a <b>non-spatial file</b>, i.e., .csv,
+                  or a file from SPSS or Stata. While these files can carry
+                  geo-information in the form of points, you need to <b>explicitly
+                  specify</b> which columns represent the coordinates of these points.
+                  <br><br>
+                  Please select the two column names that contain the X and
+                  Y coordinates, respectively (or longitude and latitude)."
+                ))
+              ),
+              
+              #### CRS ----
+              widgets$helpful_widget(
+                selectizeInput(
+                  ns("non_gis_crs"),
+                  choices = list(
+                    "WGS84 (4326)" = "4326",
+                    "Web Mercator (3857)" = "3857",
+                    "ETRS89 (4258)" = "4258",
+                    "LAEA Europe (3035)" = "3035"
+                  ),
+                  label = NULL,
+                  options = list(
+                    create = TRUE,
+                    maxItems = 1,
+                    placeholder = "Select or type a CRS",
+                    createFilter = I("function(input) { 
+                      return /^\\d+$/.test(input.trim()); 
+                    }"),
+                    render = I("{
+                      option: function(data, escape) {
+                        return '<div>' + escape(data.text || data.label || data.value) + '</div>';
+                      },
+                      item: function(data, escape) {
+                        return '<div>' + escape(data.text || data.label || data.value) + '</div>';
+                      }
+                    }")
+                  )
+                ),
+                label = "Select a reference system (CRS)",
+                tip = widgets$tip(HTML("
+                  A <a href='https://denabel.github.io/gxc_pages/crs.html#transformations-conversions'>
+                  Coordinate Reference System (CRS)</a> is a set of rules
+                  and measurements that tells you exactly where something is
+                  on Earth. You need to specify a CRS because without it,
+                  coordinates are just meaningless digits. A CRS
+                  gives those numbers <b>geographic meaning</b> allowing you to
+                  accurately locate places on a map.
+                  <br><br>
+                  A CRS is usually represented by a so-called <b>EPSG code</b>.
+                  You can select one of four common EPSG codes from the list or
+                  provide your own. Just remove the default code and type in your
+                  own. If you are unsure which CRS to select,
+                  ask your data provider; they can tell you.")
+              ))
             )
           ),
           
@@ -252,6 +329,19 @@ ui <- function(id) {
               the functions of this app. You can always go back to load
               your own dataset by selecting a file."
             ))
+          ),
+          
+          ### Data details ----
+          shinyjs::hidden(
+            card(
+              max_height = 250,
+              id = ns("data_details_container"),
+              style = "margin-top: 20px;",
+              card_header(
+                span(bsicons::bs_icon("bar-chart-fill"), "Dataset details")
+              ),
+              uiOutput(ns("data_details"))
+            )
           )
         ),
         
@@ -368,25 +458,53 @@ server <- function(id) {
       delay = 6000
     )
     
-    .data <- reactiveVal(NULL)
+    parsed <- reactiveVal(NULL) # parsed file object, yet to be cleaned
+    .data <- reactiveVal(NULL) # data ready to be linked
+    dates <- reactiveVal(NULL) # date information from .data()
     
     
-    # Read input data ----
+    # Input data ----
     observe(execute_safely({
       path <- input$file$datapath
 
-      if (identical(tools::file_ext(path), "rds")) {
+      ext <- tools::file_ext(path)
+      new <- switch(
+        ext,
+        rds = readRDS(path),
+        qs = qs2::qs_read(path),
+        csv = utils::read.csv(path),
+        sav = haven::read_sav(path),
+        por = haven::read_por(path),
+        dta = haven::read_dta(path),
+        execute_safely(
+          sf$read_sf(path),
+          toast = TRUE,
+          message = HTML(sprintf("Failed to read the provided file. Make sure to load
+            a supported file that contains geo-information. Click on %s
+            if you don't know what this means.", bsicons::bs_icon("question-circle")))
+        )
+      )
+      
+      new <- if (ext %in% "rds") {
         new <- readRDS(path)
+      } else if (ext %in% "qs") {
+        qs2::qs_read(path)
+      } else if (ext %in% "csv") {
+        utils::read.csv(path)
+      } else if (ext %in% c("sav", "por")) {
+        haven::read_spss(path)
+      } else if (ext %in% "dta") {
+        haven::read_stata(path)
       } else {
-        new <- sf$read_sf(path)
+        sf$read_sf(path)
       }
       
-      .data(new)
+      parsed(new)
     })) |>
       bindEvent(input$file)
     
     
-    # Load example data ----
+    # Example data ----
     observe(execute_safely({
       new <- utils::read.csv("app/static/ESS11-subset.csv")[c("cntry", "wrclmch")]
       new <- stats::aggregate(wrclmch ~ cntry, new, mean)
@@ -417,15 +535,220 @@ server <- function(id) {
       bindEvent(input$example_data)
 
     
-    # Show/hide flat date input ----
+    # Non-GIS - show/hide ----
     observe({
-      if (!input$date_column %in% names(.data())) {
-        shinyjs::show("flate_date_container", anim = TRUE)
+      ext <- tools::file_ext(input$file$datapath)
+      if (any(ext %in% c("csv", "dta", "sav", "por"))) {
+        shinyjs::show("non_gis_file_container", anim = TRUE)
+        toast(
+          sprintf(
+            "You loaded a %s file. We tried to automatically infer the
+            necessary geo-information. Please check if this is correct
+            and provide details on coordinates and CRS if necessary.", ext
+          ),
+          title = "Details needed!",
+          type = "warning",
+          delay = 10000
+        )
+        
+        selected <- NULL
+        if (all(c("lon", "lat") %in% colnames(parsed()))) {
+          selected <- c("lon", "lat")
+        }
+        
+        if (all(c("x", "y") %in% colnames(parsed()))) {
+          selected <- c("x", "y")
+        }
+        
+        if (all(c("X", "Y") %in% colnames(parsed()))) {
+          selected <- c("X", "Y")
+        }
+        
+        freezeReactiveValue(input, "non_gis_geometry")
+        updateSelectizeInput(
+          session = session,
+          "non_gis_geometry",
+          choices = colnames(parsed()),
+          selected = selected
+        )
+        
+        
+      } else {
+        shinyjs::hide("non_gis_file_container", anim = TRUE)
+      }
+    }) |>
+      bindEvent(parsed())
+    
+    
+    # Non-GIS - suggest CRS ----
+    observe({
+      parsed <- parsed()
+      x <- parsed[[input$non_gis_geometry[[1]]]]
+      y <- parsed[[input$non_gis_geometry[[2]]]]
+      
+      if (all(between(x, -180, 180) & between(y, -90, 90))) {
+        selected <- 4326
+      } else {
+        selected <- 3035
+      }
+      
+      freezeReactiveValue(input, "non_gis_crs")
+      updateSelectizeInput(session = session, "non_gis_crs", selected = selected)
+    }) |>
+      bindEvent(req(
+        parsed(),
+        input$non_gis_geometry,
+        length(input$non_gis_geometry) == 2
+      ))
+    
+    
+    # Non-GIS - convert ----
+    observe({
+      req(length(input$non_gis_geometry) == 2, input$non_gis_crs)
+      new_sf <- sf$st_as_sf(
+        parsed(),
+        coords = unlist(input$non_gis_geometry, use.names = FALSE),
+        crs = as.numeric(input$non_gis_crs)
+      )
+      attr(new_sf, "bbox") <- sf$st_bbox(new_sf)
+      
+      if (is_crs_mismatch(new_sf)) {
+        toast(
+          sprintf(
+            "The provided coordinates are incompatible with the specified
+              coordinate reference system (EPSG:%s).", input$non_gis_crs
+          ),
+          title = "Invalid CRS selected",
+          type = "danger",
+          delay = 10000
+        )
+        req(FALSE)
+      }
+      
+      .data(new_sf)
+    })
+    
+    
+    # Flat date - show/hide ----
+    observe({
+      if (!input$date_column %in% names(parsed())) {
+        shinyjs::show("flat_date_container", anim = TRUE)
       } else {
         shinyjs::hide("flat_date_container", anim = TRUE)
       }
     }) |>
-      bindEvent(.data())
+      bindEvent(parsed())
+    
+    
+    # Flat date - merge ----
+    observe({
+      if (input$date_column %in% names(parsed())) {
+        dates(parsed()[[input$date_column]])
+      } else {
+        dates(input$flat_date)
+      }
+    }) |>
+      bindEvent(.data() %||% parsed())
+    
+    
+    # Data details - show ----
+    observe({
+      req(.data() %||% parsed(), dates())
+      shinyjs::show("data_details_container", anim = TRUE)
+    })
+    
+    
+    # Data details - render ----
+    output$data_details <- renderUI({
+      start <- min(as_date(dates()))
+      end <- max(as_date(dates()))
+
+      details <- list(
+        start = start,
+        end = end,
+        extent = format_duration(end - start),
+        variables = ncol(.data() %||% parsed()),
+        records = nrow(.data() %||% parsed())
+      )
+      
+      div(
+        style = htmltools::css(
+          display = "flex",
+          `align-items` = "center",
+        ),
+        div(
+          style = "flex: 1;",
+          div(
+            style = htmltools::css(
+              display = "grid",
+              `grid-template-columns` = "repeat(auto-fit, minmax(200px, 1fr))"
+            ),
+            div(
+              style = "display: flex; align-items: center; gap: 8px;",
+              bsicons::bs_icon("calendar-range"),
+              format_daterange(details$end, details$start)
+            ),
+            div(
+              style = "display: flex; align-items: center; gap: 8px;",
+              bsicons::bs_icon("hourglass-split"),
+              details$extent
+            ),
+            div(
+              style = "display: flex; align-items: center; gap: 8px;",
+              bsicons::bs_icon("list-ul"),
+              sprintf("%s records", details$records)
+            ),
+            div(
+              style = "display: flex; align-items: center; gap: 8px;",
+              bsicons::bs_icon("diagram-3"),
+              sprintf("%s features", details$variables)
+            )
+          )
+        ),
+        
+        div(style = "width: 1px; background-color: #dee2e6; align-self: stretch;"),
+        
+        div(
+          style = "margin-left: 20px",
+          actionButton(
+            session$ns("explore_data"),
+            tagList(
+              bsicons::bs_icon("table"),
+              "Inspect data"
+            ),
+            class = "btn-outline-primary",
+            style = "height: 45px; padding: 8px 8px; white-space: nowrap; min-width: 140px"
+          )
+        )
+      )
+    })
+    
+    
+    # Data details - inspect ----
+    observe({
+      send_info(
+        div(
+          reactable::reactableOutput(session$ns("explore_data_table")),
+          style = "overflow-y: auto; overflow-x: auto;"
+        ),
+        title = "Dataset inspection",
+        size = "xl",
+        btn_label = "Dismiss"
+      )
+    }) |>
+      bindEvent(input$explore_data)
+    
+    
+    output$explore_data_table <- reactable::renderReactable({
+       reactable::reactable(
+         sf$st_drop_geometry(.data()),
+         striped = TRUE,
+         highlight = TRUE,
+         bordered = TRUE,
+         resizable = TRUE,
+         filterable = TRUE
+       ) 
+    })
     
     
     # Choose catalogue ----
@@ -561,15 +884,26 @@ server <- function(id) {
           }"
         )
     })
+    
+    
+    # Clear map on new file ----
+    observe({
+      leaflet$leafletProxy("map") |>
+        leaflet$clearShapes() |>
+        leaflet$clearMarkers() |>
+        leaflet$clearControls()
+    }) |>
+      bindEvent(input$file)
 
 
     # Add input data to map ----
     observe(execute_safely({
-      req(.data())
+      req(.data(), inherits(.data(), "sf"))
       .data <- sf$st_transform(.data(), 4326)
       bbox <- sf$st_bbox(.data)
       proxy <- leaflet$leafletProxy("map", data = .data) |>
         leaflet$clearShapes() |>
+        leaflet$clearMarkers() |>
         leaflet$clearControls()
 
       leaflet$flyToBounds(
@@ -601,9 +935,10 @@ server <- function(id) {
       } else if (all(sf$st_is(.data, c("POINT", "MULTIPOINT")))) {
         leaflet$addCircleMarkers(
           proxy,
-          weight = 1,
+          radius = 0.5,
           color = "black",
-          opacity = 0.5
+          opacity = 1,
+          fillOpacity = 1
         )
       }
     }))
