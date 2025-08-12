@@ -122,12 +122,17 @@ is_categorical <- function(x) {
   (is.factor(x) && !is.ordered(x)) ||
   is.character(x) ||
   is.logical(x) ||
-  (is_integerish(x) && length(unique(x[!is.na(x)])) < 10)
+  (is_integerish(x) && all(between(x, 0, 10)))
+}
+
+
+is_datetime <- function(x) {
+  inherits(x, "Date") || inherits(x, "POSIXt")
 }
 
 
 is_continuous <- function(x) {
-  !is_categorical(x) && (is.numeric(x) || is.ordered(x))
+  !is_categorical(x) && (is.numeric(x) || is.ordered(x) || is_datetime(x))
 }
 
 

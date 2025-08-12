@@ -744,13 +744,22 @@ server <- function(id) {
       req(.data)
       if (ncol(.data) > 2) {
         featnames <- setdiff(names(.data), "geometry")
+        # filter out features that 
+        featnames <- featnames[vapply(.data[, featnames], is_valid_for_leaflet, logical(1))]
 
         # Select the first column in input data that can be plotted
         selected <- NULL
         for (feat in featnames) {
-          if (is_valid_for_leaflet(.data[[feat]])) {
+          vec <- .data[[feat]]
+          
+          # adopt categorical data with >20 categories only if necessary
+          if (is_valid_for_leaflet(vec) && !(is_categorical(vec) && length(unique(vec)) > 20)) {
             selected <- feat
             break
+
+          # other valid data are adopted straightaway
+          } else if (is_valid_for_leaflet(vec)) {
+            selected <- feat
           }
         }
 
@@ -765,16 +774,6 @@ server <- function(id) {
           )
           .data(NULL)
           req(FALSE)
-        }
-
-        if (is_categorical(.data[[selected]]) && length(unique(.data[[selected]])) > 20) {
-          toast(
-            "Your selected feature is categorical but contains more than 20 categories.
-              The map legend could become overstuffed.",
-            title = "Too many categories",
-            type = "warning",
-            delay = 5000
-          )
         }
 
         shinyWidgets::updateVirtualSelect(
@@ -1120,21 +1119,27 @@ server <- function(id) {
       showcase_given <- showcase_col %in% names(.data)
       if (showcase_given) {
         domain <- .data[[showcase_col]]
+        colors <- grDevices::hcl.colors(n = 50, input$showcase_palette)
         
-        if (is_continuous(domain)) {
-          pal <- leaflet$colorBin(
-            grDevices::hcl.colors(n = 50, input$showcase_palette),
-            domain = domain
-          )
+        # convert date-times to numbers, then transform their labels later
+        is_datetime <- is_datetime(domain)
+        if (is_datetime) {
+          tz <- tz(domain)
+          domain <- as.numeric(domain)
+          pal <- leaflet$colorNumeric(colors, domain = domain)
+        } else if (is_continuous(domain)) {
+          pal <- leaflet$colorBin(colors, domain = domain)
         } else if (is_categorical(domain)) {
+          levels <- if (is.factor(domain)) {
+            levels(domain)
+          } else {
+            sort(unique(domain))
+          }
+
           pal <- leaflet$colorFactor(
-            grDevices::hcl.colors(n = 50, input$showcase_palette),
+            colors,
             domain = domain,
-            levels = if (is.factor(domain)) {
-              levels(domain)
-            } else {
-              sort(unique(domain))
-            },
+            levels = levels,
             ordered = is.ordered(domain)
           )
         }
@@ -1181,15 +1186,21 @@ server <- function(id) {
           options = leaflet$pathOptions(pane = "svyPane")
         )
       }
-      
+
       if (showcase_given) {
+        val_fm <- if (is_datetime) {
+          stats::as.formula(sprintf("~as.numeric(%s)", showcase_col))
+        } else {
+          stats::as.formula(sprintf("~%s", showcase_col))
+        }
+
         leaflet$addLegend(
           proxy,
           position = "bottomleft",
           layerId = session$ns("svyLegend"),
           group = "svyGroup",
           pal = pal,
-          values = stats::as.formula(sprintf("~%s", showcase_col)),
+          values = val_fm,
           title = paste(
             input$showcase_desc %zchar% showcase_col,
             if (nzchar(input$showcase_unit)) {
@@ -1199,7 +1210,17 @@ server <- function(id) {
             }
           ),
           na.label = "N/A",
-          opacity = 1
+          opacity = 1,
+          labFormat = leaflet$labelFormat(
+            transform = if (is_datetime) {
+              function(x) {
+                if (!length(x)) unique(domain) else x
+                #as.character(as.POSIXct(x, origin = "1970-01-01", tz = tz %||% "UTC"))
+              }
+            } else {
+              identity
+            }
+          )
         )
       }
     }))
