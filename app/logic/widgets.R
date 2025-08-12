@@ -18,21 +18,25 @@ pal_icon <- function(colors) {
 show_more <- function(text) {
   shiny::div(
     shiny::p(text, class = "text-expand"),
-    shiny::a(
-      "Show more",
-      class = "show-more",
-      id = "showMore",
-      onclick = shiny::HTML("
+    
+    if (nchar(text) > 200) {
+      shiny::a(
+        "Show more",
+        class = "show-more",
+        id = "showMore",
+        onclick = shiny::HTML("
         const text = document.querySelector('.text-expand')
+        
         if (text.classList.contains('expanded')) {
-          text.classList.remove('expanded')
+          text.classList.remove('expanded');
           this.textContent = 'Show more';
         } else {
           text.classList.add('expanded');
           this.textContent = 'Show less';
         }
       ")
-    )
+      )
+    }
   )
 }
 

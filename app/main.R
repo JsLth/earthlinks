@@ -24,7 +24,15 @@ ui <- function(id) {
       useShinyjs(),
       if (getOption("earthlinks_debug", FALSE)) use_tracking(),
       #useShinyFeedback(),
-      toastContainer("toast-container")
+      toastContainer("toast-container"),
+      tags$script('
+        Shiny.addCustomMessageHandler("resetFileInputHandler", function(x) {      
+          var id = "#" + x + "_progress";
+          var idBar = id + " .bar";  
+          $(id).css("visibility", "hidden");
+          $(idBar).css("width", "0%");
+        });
+      ')
     ),
     layout$ui(ns("layout")),
   )

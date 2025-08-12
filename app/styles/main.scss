@@ -111,9 +111,11 @@ body {
 
 
 /* change font family of shiny inputs to monospace */
+.code-input,
 .code-input .shiny-input-text {
-  font-family: monospace;
+  font-family: monospace !important;
 }
+
 
 
 /* add a gap below pseudo-labels */

@@ -6,6 +6,7 @@ box::use(
 
 box::use(
   app/logic/jsutils[toast],
+  app/logic/utils[capture_ansi]
 )
 
 
@@ -44,7 +45,7 @@ execute_safely <- function(expr,
     expr = {
       # In case of warning, return expression
       withCallingHandlers(
-        expr = expr,
+        expr = shiny::withLogErrors(expr),
         warning = function(w) {
           toast(message = w$message, type = "warning", session = session)
         }
@@ -56,7 +57,10 @@ execute_safely <- function(expr,
 
       if (is.null(error_fun)) {
         if (!toast) {
-          traceback <- rlang::trace_back()
+          traceback <- shiny::printStackTrace(e) |>
+            capture_ansi(type = "message") |>
+            paste(collapse = "\n")
+
           send_error(div(
             style = "text-align: left",
             message,
@@ -64,13 +68,10 @@ execute_safely <- function(expr,
             br(), br(),
             "Error details:", br(),
             tags$pre(cli_to_html(e, warn = FALSE), style = "max-height: 20vh"),
-            if (length(traceback$call)) {
-              traceback_fmt <- paste(format(traceback), collapse = "\n")
-              tags$details(
-                tags$summary("Traceback"),
-                tags$pre(cli_to_html(traceback_fmt, warn = FALSE), style = "max-height: 20vh")
-              )
-            }
+            tags$details(
+              tags$summary("Traceback"),
+              tags$pre(cli_to_html(traceback, warn = FALSE), style = "max-height: 20vh")
+            )
           ), session = session, title = title, size = "l")
         } else {
           toast(

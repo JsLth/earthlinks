@@ -5,10 +5,11 @@ box::use(
   leaflet,
   sf,
   shiny[...],
-  shinyWidgets[pickerInput, airDatepickerInput],
+  shinyWidgets,
   giscoR[gisco_get_nuts],
   countrycode[countrycode],
   leaflet.extras2[addSidebyside, removeSidebyside],
+  gargoyle,
 
 )
 
@@ -17,6 +18,7 @@ box::use(
   app/logic/modals[execute_safely, with_info, send_error, send_info],
   app/logic/codes[search_param],
   app/logic/utils[...],
+  app/logic/time_utils[...],
   app/logic/jsutils[toast, remove_toast, liveCounter],
   app/logic/enum[palettes, units],
   
@@ -243,7 +245,7 @@ ui <- function(id) {
                 "Load example data"
               )
             ),
-            label = "Just want to look around? No worries!",
+            label = "Just want to look around?",
             tip = widgets$tip(HTML(
               "By clicking on this button, you will load pre-processed
               example data from the <a href='https://www.europeansocialsurvey.org/'>
@@ -286,7 +288,7 @@ ui <- function(id) {
               
               #### CRS ----
               widgets$helpful(
-                selectizeInput(
+                shinyWidgets$virtualSelectInput(
                   ns("non_gis_crs"),
                   choices = list(
                     "WGS84 (4326)" = "4326",
@@ -295,22 +297,10 @@ ui <- function(id) {
                     "LAEA Europe (3035)" = "3035"
                   ),
                   label = NULL,
-                  options = list(
-                    create = TRUE,
-                    maxItems = 1,
-                    placeholder = "Select or type a CRS",
-                    createFilter = I("function(input) { 
-                      return /^\\d+$/.test(input.trim()); 
-                    }"),
-                    render = I("{
-                      option: function(data, escape) {
-                        return '<div>' + escape(data.text || data.label || data.value) + '</div>';
-                      },
-                      item: function(data, escape) {
-                        return '<div>' + escape(data.text || data.label || data.value) + '</div>';
-                      }
-                    }")
-                  )
+                  multiple = FALSE,
+                  search = TRUE,
+                  allowNewOption = TRUE,
+                  searchPlaceholderText = "Add other EPSG codes..."
                 ),
                 label = "Select a reference system (CRS)",
                 tip = widgets$tip(HTML("
@@ -335,7 +325,7 @@ ui <- function(id) {
           shinyjs::hidden(
             widgets$helpful(
               id = ns("flat_date_container"),
-              airDatepickerInput(
+              shinyWidgets$airDatepickerInput(
                 ns("flat_date"),
                 label = NULL,
                 range = TRUE,
@@ -361,11 +351,15 @@ ui <- function(id) {
           shinyjs::hidden(
             widgets$helpful(
               id = ns("showcase_col_container"),
-              shinyWidgets::virtualSelectInput(
+              shinyWidgets$virtualSelectInput(
                 ns("showcase_col"),
                 label = NULL,
                 choices = list(),
-                search = TRUE
+                search = TRUE,
+                additionalClasses = "code-input",
+                additionalDropboxClasses = "code-input",
+                additionalDropboxContainerClasses = "code-input",
+                additionalToggleButtonClasses = "code-input"
               ),
               label = "Which column do you want to show on the map?",
               tip = widgets$tip(HTML(
@@ -390,10 +384,10 @@ ui <- function(id) {
                       placeholder = "e.g., euro per capita"
                     )
                   ),
-                  shinyWidgets::virtualSelectInput(
+                  shinyWidgets$virtualSelectInput(
                     ns("showcase_palette"),
                     label = "What color palette should the feature be shown in?",
-                    choices = shinyWidgets::prepare_choices(
+                    choices = shinyWidgets$prepare_choices(
                       palettes,
                       label = palette,
                       value = palette,
@@ -549,7 +543,7 @@ server <- function(id) {
         ext,
         rds = readRDS(path),
         qs = qs2::qs_read(path),
-        csv = utils::read.csv(path),
+        csv = readr::read_delim(path, show_col_types = FALSE),
         sav = haven::read_sav(path),
         por = haven::read_por(path),
         dta = haven::read_dta(path),
@@ -562,30 +556,18 @@ server <- function(id) {
         )
       )
       
-      new <- if (ext %in% "rds") {
-        new <- readRDS(path)
-      } else if (ext %in% "qs") {
-        qs2::qs_read(path)
-      } else if (ext %in% "csv") {
-        utils::read.csv(path)
-      } else if (ext %in% c("sav", "por")) {
-        haven::read_spss(path)
-      } else if (ext %in% "dta") {
-        haven::read_stata(path)
-      } else {
-        sf$read_sf(path)
-      }
-      
       example_data_loaded <<- FALSE
       parsed(new)
+      if (inherits(new, "sf")) .data(new)
     })) |>
       bindEvent(input$file)
     
     
     # Example data ----
     observe(execute_safely({
-      new <- utils::read.csv("app/data/ESS11-subset.csv")[c("cntry", "wrclmch")]
-      new <- stats::aggregate(wrclmch ~ cntry, new, mean)
+      new <- utils::read.csv("app/data/ESS11-subset.csv")[c("cntry", "inwde", "wrclmch")]
+      new$inwde <- as.POSIXct(new$inwde, format = "%Y-%m-%d %H:%M:%S")
+      new <- stats::aggregate(cbind(inwde, wrclmch) ~ cntry, new, mean, na.rm = TRUE)
       countries <- unique(new$cntry)
       geom <- gisco_get_nuts(
         year = "2024",
@@ -606,8 +588,8 @@ server <- function(id) {
           ymax = 70
         ), crs = sf$st_crs(4326)))
       ))
-      names(new) <- c("country", "climate_concern", "geometry")
-      new$date <- as.POSIXct("2023-01-01")
+      names(new) <- c("country", "date", "climate_concern", "geometry")
+      new$date <- as.Date(as.POSIXct(new$date))
       example_data_loaded <<- TRUE
       parsed(new)
       .data(new)
@@ -625,7 +607,9 @@ server <- function(id) {
     # Non-GIS - show/hide ----
     observe(execute_safely({
       ext <- tools::file_ext(input$file$datapath)
-      if (any(ext %in% c("csv", "dta", "sav", "por")) && !example_data_loaded) {
+      if (length(ext) &&
+          any(ext %in% c("csv", "dta", "sav", "por", "rds", "qs")) &&
+          !example_data_loaded) {
         shinyjs::show("non_gis_file_container", anim = TRUE)
         toast(
           sprintf(
@@ -742,11 +726,22 @@ server <- function(id) {
     observe(execute_safely({
       .data <- .data()
       req(.data)
+      
+      featnames <- setdiff(names(.data), "geometry")
+      featnames <- featnames[vapply(.data[, featnames], is_valid_for_leaflet, logical(1))]
+      
+      if (!length(featnames)) {
+        toast(
+          "The selected dataset contains no valid features (categorical or continuous vectors).
+            No features can be displayed.",
+          title = "No valid features found",
+          type = "warning",
+          delay = 5000
+        )
+        req(FALSE)
+      }
+      
       if (ncol(.data) > 2) {
-        featnames <- setdiff(names(.data), "geometry")
-        # filter out features that 
-        featnames <- featnames[vapply(.data[, featnames], is_valid_for_leaflet, logical(1))]
-
         # Select the first column in input data that can be plotted
         selected <- NULL
         for (feat in featnames) {
@@ -762,32 +757,26 @@ server <- function(id) {
             selected <- feat
           }
         }
-
-        # If nothing can be plotted, abort
-        if (is.null(selected)) {
-          toast(
-            "The selected dataset contains no valid features (categorical or continuous vectors).
-              Please revise the dataset or select a different one.",
-            title = "Invalid dataset selected",
-            type = "danger",
-            delay = 10000
-          )
-          .data(NULL)
-          req(FALSE)
-        }
-
-        shinyWidgets::updateVirtualSelect(
+        
+        choices <- shinyWidgets$prepare_choices(
+          data.frame(value = featnames, classNames = "code-input"),
+          label = value,
+          value = value,
+          classNames = classNames
+          
+        )
+        shinyWidgets$updateVirtualSelect(
           "showcase_col",
-          choices = featnames,
+          choices = choices,
           selected = featnames[[1]]
         )
 
         shinyjs::show("showcase_col_container", anim = TRUE)
       } else {
-        shinyWidgets::updateVirtualSelect(
+        shinyWidgets$updateVirtualSelect(
           "showcase_col",
-          choices = list(),
-          selected = NULL
+          choices = list(featnames),
+          selected = featnames[[1]]
         )
         shinyjs::hide("showcase_col_container", anim = TRUE)
       }
@@ -799,17 +788,17 @@ server <- function(id) {
       showcase <- .data()[[input$showcase_col]]
       freezeReactiveValue(input, "showcase_palette")
       if (is_categorical(showcase)) {
-        shinyWidgets::updateVirtualSelect(
+        shinyWidgets$updateVirtualSelect(
           "showcase_palette",
           selected = "Dark 3"
         )
       } else if (is_diverging(showcase)) {
-        shinyWidgets::updateVirtualSelect(
+        shinyWidgets$updateVirtualSelect(
           "showcase_palette",
           selected = "Blue-Red"
         )
       } else {
-        shinyWidgets::updateVirtualSelect(
+        shinyWidgets$updateVirtualSelect(
           "showcase_palette",
           selected = "Viridis"
         )
@@ -946,9 +935,9 @@ server <- function(id) {
 
     
     param_meta <- reactive({
-      meta <- tryCatch(
+      tryCatch(
         {
-          search_param(input$indicator)
+          meta <- search_param(input$indicator)
           meta$unit <- units[units$id %in% meta$unit_id, ]$name
           meta
         },
@@ -1097,9 +1086,6 @@ server <- function(id) {
 
 
     # Add input data to map ----
-    svy_layer_ids <- character()
-    eod_layer_ids <- character()
-
     observe(execute_safely({
       req(.data(), inherits(.data(), "sf"))
       .data <- sf$st_transform(.data(), 4326)
@@ -1125,7 +1111,7 @@ server <- function(id) {
         is_datetime <- is_datetime(domain)
         if (is_datetime) {
           tz <- tz(domain)
-          domain <- as.numeric(domain)
+          domain <- linux_time(domain)
           pal <- leaflet$colorNumeric(colors, domain = domain)
         } else if (is_continuous(domain)) {
           pal <- leaflet$colorBin(colors, domain = domain)
@@ -1145,7 +1131,6 @@ server <- function(id) {
         }
       }
 
-      #svy_layer_ids <<- session$ns(sprintf("svy_layer_%s", seq_len(nrow(.data))))
       if (all(sf$st_is(.data, c("POLYGON", "MULTIPOLYGON")))) {
         fill_opacity <- if (showcase_given) 1 else 0.001
         leaflet$addPolygons(
@@ -1155,7 +1140,7 @@ server <- function(id) {
           color = "black",
           fill = TRUE,
           fillColor = if (showcase_given) {
-            stats::as.formula(sprintf("~pal(%s)", showcase_col))
+            pal(domain)
           } else {
             "white"
           },
@@ -1177,9 +1162,9 @@ server <- function(id) {
           group = "svyGroup",
           radius = 0.5,
           color = if (showcase_given) {
-            stats::as.formula(sprintf("~pal(%s)", showcase_col))
+            pal(domain)
           } else {
-            "black"
+            "white"
           },
           opacity = 1,
           fillOpacity = 1,
@@ -1188,19 +1173,13 @@ server <- function(id) {
       }
 
       if (showcase_given) {
-        val_fm <- if (is_datetime) {
-          stats::as.formula(sprintf("~as.numeric(%s)", showcase_col))
-        } else {
-          stats::as.formula(sprintf("~%s", showcase_col))
-        }
-
         leaflet$addLegend(
           proxy,
           position = "bottomleft",
           layerId = session$ns("svyLegend"),
           group = "svyGroup",
           pal = pal,
-          values = val_fm,
+          values = domain,
           title = paste(
             input$showcase_desc %zchar% showcase_col,
             if (nzchar(input$showcase_unit)) {
@@ -1211,11 +1190,16 @@ server <- function(id) {
           ),
           na.label = "N/A",
           opacity = 1,
-          labFormat = leaflet$labelFormat(
+          labFormat = labelFormat2(
             transform = if (is_datetime) {
               function(x) {
-                if (!length(x)) unique(domain) else x
-                #as.character(as.POSIXct(x, origin = "1970-01-01", tz = tz %||% "UTC"))
+                if (!length(x)) return(format(as.POSIXct(
+                  unique(domain),
+                  origin = "1970-01-01",
+                  tz = tz %||% "UTC"
+                )))
+
+                format(as.POSIXct(x, tz = tz %||% "UTC"), "%Y-%m-%d")
               }
             } else {
               identity
