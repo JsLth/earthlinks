@@ -8,7 +8,8 @@ box::use(
   shinyWidgets[pickerInput, airDatepickerInput],
   giscoR[gisco_get_nuts],
   countrycode[countrycode],
-  
+  leaflet.extras2[addSidebyside, removeSidebyside],
+
 )
 
 box::use(
@@ -525,9 +526,7 @@ ui <- function(id) {
 
 
 server <- function(id) {
-  moduleServer(id, function(input, output, session) {
-    cli::cli_inform("test")
-    
+  moduleServer(id, function(input, output, session) {   
     toast(
       "Thanks for using EarthLinks!",
       title = "App successfully started",
@@ -624,7 +623,7 @@ server <- function(id) {
     
     
     # Non-GIS - show/hide ----
-    observe({
+    observe(execute_safely({
       ext <- tools::file_ext(input$file$datapath)
       if (any(ext %in% c("csv", "dta", "sav", "por")) && !example_data_loaded) {
         shinyjs::show("non_gis_file_container", anim = TRUE)
@@ -664,12 +663,12 @@ server <- function(id) {
       } else {
         shinyjs::hide("non_gis_file_container", anim = TRUE)
       }
-    }) |>
+    })) |>
       bindEvent(parsed())
     
     
     # Non-GIS - suggest CRS ----
-    observe({
+    observe(execute_safely({
       parsed <- parsed()
       x <- parsed[[input$non_gis_geometry[[1]]]]
       y <- parsed[[input$non_gis_geometry[[2]]]]
@@ -682,7 +681,7 @@ server <- function(id) {
       
       freezeReactiveValue(input, "non_gis_crs")
       updateSelectizeInput(session = session, "non_gis_crs", selected = selected)
-    }) |>
+    })) |>
       bindEvent(req(
         parsed(),
         input$non_gis_geometry,
@@ -691,7 +690,7 @@ server <- function(id) {
     
     
     # Non-GIS - convert ----
-    observe({
+    observe(execute_safely({
       req(length(input$non_gis_geometry) == 2, input$non_gis_crs)
       new_sf <- sf$st_as_sf(
         parsed(),
@@ -714,55 +713,122 @@ server <- function(id) {
       }
       
       .data(new_sf)
-    })
+    }))
     
     
     # Flat date - show/hide ----
-    observe({
+    observe(execute_safely({
       if (!input$date_column %in% names(parsed()) && !example_data_loaded) {
         shinyjs::show("flat_date_container", anim = TRUE)
       } else {
         shinyjs::hide("flat_date_container", anim = TRUE)
       }
-    }) |>
+    })) |>
       bindEvent(parsed())
     
     
     # Flat date - merge ----
-    observe({
+    observe(execute_safely({
       if (input$date_column %in% names(parsed())) {
         dates(parsed()[[input$date_column]])
       } else {
         dates(input$flat_date)
       }
-    }) |>
+    })) |>
       bindEvent(.data() %||% parsed())
     
     
     # Showcase - show/hide ----
-    observe({
-      req(.data())
-      if (ncol(.data()) > 2) {
+    observe(execute_safely({
+      .data <- .data()
+      req(.data)
+      if (ncol(.data) > 2) {
+        featnames <- setdiff(names(.data), "geometry")
+
+        # Select the first column in input data that can be plotted
+        selected <- NULL
+        for (feat in featnames) {
+          if (is_valid_for_leaflet(.data[[feat]])) {
+            selected <- feat
+            break
+          }
+        }
+
+        # If nothing can be plotted, abort
+        if (is.null(selected)) {
+          toast(
+            "The selected dataset contains no valid features (categorical or continuous vectors).
+              Please revise the dataset or select a different one.",
+            title = "Invalid dataset selected",
+            type = "danger",
+            delay = 10000
+          )
+          .data(NULL)
+          req(FALSE)
+        }
+
+        if (is_categorical(.data[[selected]]) && length(unique(.data[[selected]])) > 20) {
+          toast(
+            "Your selected feature is categorical but contains more than 20 categories.
+              The map legend could become overstuffed.",
+            title = "Too many categories",
+            type = "warning",
+            delay = 5000
+          )
+        }
+
         shinyWidgets::updateVirtualSelect(
           "showcase_col",
-          choices = setdiff(names(.data()), "geometry")
+          choices = featnames,
+          selected = featnames[[1]]
         )
+
         shinyjs::show("showcase_col_container", anim = TRUE)
       } else {
+        shinyWidgets::updateVirtualSelect(
+          "showcase_col",
+          choices = list(),
+          selected = NULL
+        )
         shinyjs::hide("showcase_col_container", anim = TRUE)
       }
-    })
+    }))
     
+
+    # Showcase - palette ----
+    observe(execute_safely({
+      showcase <- .data()[[input$showcase_col]]
+      freezeReactiveValue(input, "showcase_palette")
+      if (is_categorical(showcase)) {
+        shinyWidgets::updateVirtualSelect(
+          "showcase_palette",
+          selected = "Dark 3"
+        )
+      } else if (is_diverging(showcase)) {
+        shinyWidgets::updateVirtualSelect(
+          "showcase_palette",
+          selected = "Blue-Red"
+        )
+      } else {
+        shinyWidgets::updateVirtualSelect(
+          "showcase_palette",
+          selected = "Viridis"
+        )
+      }
+    })) |>
+      bindEvent(input$showcase_col)
+
     
     # Data details - show ----
-    observe({
+    observe(execute_safely({
       req(.data() %||% parsed(), dates())
       shinyjs::show("data_details_container", anim = TRUE)
-    })
+    }))
     
     
     # Data details - render ----
-    output$data_details <- renderUI({
+    output$data_details <- renderUI(execute_safely({
+      req(dates())
       start <- min(as_date(dates()))
       end <- max(as_date(dates()))
 
@@ -770,14 +836,14 @@ server <- function(id) {
         start = start,
         end = end,
         extent = format_duration(end - start),
-        variables = ncol(.data() %||% parsed()),
+        variables = ncol(.data() %||% parsed()) - 1,
         records = nrow(.data() %||% parsed())
       )
       
       div(
         style = htmltools::css(
           display = "flex",
-          `align-items` = "center",
+          `align-items` = "center"
         ),
         div(
           style = "flex: 1;",
@@ -832,11 +898,11 @@ server <- function(id) {
           )
         )
       )
-    })
+    }))
     
     
     # Data details - inspect ----
-    observe({
+    observe(execute_safely({
       send_info(
         div(
           reactable::reactableOutput(session$ns("explore_data_table")),
@@ -846,11 +912,11 @@ server <- function(id) {
         size = "xl",
         btn_label = "Dismiss"
       )
-    }) |>
+    })) |>
       bindEvent(input$explore_data)
     
     
-    output$explore_data_table <- reactable::renderReactable({
+    output$explore_data_table <- reactable::renderReactable(execute_safely({
        reactable::reactable(
          sf$st_drop_geometry(.data()),
          striped = TRUE,
@@ -859,11 +925,11 @@ server <- function(id) {
          resizable = TRUE,
          filterable = TRUE
        ) 
-    })
+    }))
     
     
     # Choose catalogue ----
-    catalogue <- reactive({
+    catalogue <- reactive(execute_safely({
       if (input$land) {
         switch(
           input$time_level,
@@ -877,25 +943,36 @@ server <- function(id) {
           monthly = "reanalysis-era5-single-levels-monthly-means"
         )
       }
-    })
+    }))
 
     
     param_meta <- reactive({
-      meta <- search_param(input$indicator)
-      meta$unit <- units[units$id %in% meta$unit_id, ]$name
-      meta
+      meta <- tryCatch(
+        {
+          search_param(input$indicator)
+          meta$unit <- units[units$id %in% meta$unit_id, ]$name
+          meta
+        },
+        error = function(e) list()
+      )
     })
     
     
     # Show indicator description ----
-    output$indicator_desc <- renderUI({
-      desc <- search_param(input$indicator)$description
+    output$indicator_desc <- renderUI(execute_safely({
+      meta <- param_meta()
+      desc <- if (length(meta)) {
+        meta$description
+      } else {
+        "No parameter description can currently be displayed because the parameter database is unavailable. Please try again later."
+      }
+
       widgets$callout(widgets$show_more(HTML(desc)))
-    })
+    }))
     
     
     # Update indicator selection ----
-    observe({
+    observe(execute_safely({
       new_choices <- gxc:::allowed_indicators_by_catalogue[[catalogue()]]
       new_choices <- unname(invert(indicators)[new_choices])
       selected <- isolate(input$indicator)
@@ -909,7 +986,7 @@ server <- function(id) {
         choices = new_choices,
         selected = selected
       )
-    })
+    }))
     
     
     # Perform linking ----
@@ -981,41 +1058,55 @@ server <- function(id) {
     
     
     # Render base map ----
-    output$map <- leaflet$renderLeaflet({
+    output$map <- leaflet$renderLeaflet(execute_safely({
       leaflet$leaflet(options = leaflet$leafletOptions(zoomControl = FALSE)) |>
-        leaflet$addProviderTiles("CartoDB.DarkMatter", group = "Dark") |>
-        leaflet$addProviderTiles("CartoDB.Positron", group = "Light") |>
-        leaflet$addLayersControl(baseGroups = c("Light", "Dark")) |>
+        leaflet$addMapPane("svyPane", zIndex = 210) |>
+        leaflet$addMapPane("eodPane", zIndex = 200) |>
+        leaflet$addProviderTiles(
+          "CartoDB.Positron",
+          group = "Light",
+          layerId = session$ns("svyTiles"),
+          options = leaflet$tileOptions(pane = "svyPane")
+      ) |>
+        leaflet$addProviderTiles(
+          "CartoDB.DarkMatter",
+          group = "Dark",
+          layerId = session$ns("eodTiles"),
+          options = leaflet$tileOptions(pane = "eodPane")
+      ) |>
+        #leaflet$addLayersControl(baseGroups = c("Light", "Dark")) |>
         leaflet$setView(14, 48, 5) |>
         onRender(
           "function(el, x) {
             L.control.zoom({
-              position: 'bottomleft'
+              position: 'topright'
             }).addTo(this);
           }"
         )
-    })
+    }))
     
     
     # Clear map on new file ----
-    observe({
+    observe(execute_safely({
       leaflet$leafletProxy("map") |>
         leaflet$clearShapes() |>
         leaflet$clearMarkers() |>
-        leaflet$clearControls()
-    }) |>
+        leaflet$clearControls() |>
+        removeSidebyside(session$ns("sidebyside"))
+    })) |>
       bindEvent(input$file)
 
 
     # Add input data to map ----
+    svy_layer_ids <- character()
+    eod_layer_ids <- character()
+
     observe(execute_safely({
       req(.data(), inherits(.data(), "sf"))
       .data <- sf$st_transform(.data(), 4326)
       bbox <- sf$st_bbox(.data)
       proxy <- leaflet$leafletProxy("map", data = .data) |>
-        leaflet$clearShapes() |>
-        leaflet$clearMarkers() |>
-        leaflet$clearControls()
+        leaflet$clearGroup("svyGroup")
 
       leaflet$flyToBounds(
         proxy,
@@ -1026,16 +1117,16 @@ server <- function(id) {
       )
       
       showcase_col <- input$showcase_col
-      showcase_given <- nzchar(showcase_col)
+      showcase_given <- showcase_col %in% names(.data)
       if (showcase_given) {
         domain <- .data[[showcase_col]]
         
-        if (is.numeric(domain)) {
+        if (is_continuous(domain)) {
           pal <- leaflet$colorBin(
             grDevices::hcl.colors(n = 50, input$showcase_palette),
             domain = domain
           )
-        } else {
+        } else if (is_categorical(domain)) {
           pal <- leaflet$colorFactor(
             grDevices::hcl.colors(n = 50, input$showcase_palette),
             domain = domain,
@@ -1049,10 +1140,12 @@ server <- function(id) {
         }
       }
 
+      #svy_layer_ids <<- session$ns(sprintf("svy_layer_%s", seq_len(nrow(.data))))
       if (all(sf$st_is(.data, c("POLYGON", "MULTIPOLYGON")))) {
         fill_opacity <- if (showcase_given) 1 else 0.001
         leaflet$addPolygons(
           proxy,
+          group = "svyGroup",
           weight = 1,
           color = "black",
           fill = TRUE,
@@ -1070,11 +1163,13 @@ server <- function(id) {
             fillOpacity = fill_opacity,
             bringToFront = TRUE,
             sendToBack = TRUE
-          )
+          ),
+          options = leaflet$pathOptions(pane = "svyPane")
         )
       } else if (all(sf$st_is(.data, c("POINT", "MULTIPOINT")))) {
         leaflet$addCircleMarkers(
           proxy,
+          group = "svyGroup",
           radius = 0.5,
           color = if (showcase_given) {
             stats::as.formula(sprintf("~pal(%s)", showcase_col))
@@ -1082,14 +1177,17 @@ server <- function(id) {
             "black"
           },
           opacity = 1,
-          fillOpacity = 1
+          fillOpacity = 1,
+          options = leaflet$pathOptions(pane = "svyPane")
         )
       }
       
       if (showcase_given) {
         leaflet$addLegend(
           proxy,
-          position = "bottomright",
+          position = "bottomleft",
+          layerId = session$ns("svyLegend"),
+          group = "svyGroup",
           pal = pal,
           values = stats::as.formula(sprintf("~%s", showcase_col)),
           title = paste(
@@ -1113,8 +1211,7 @@ server <- function(id) {
       .data <- sf$st_transform(linked(), 4326)
       bbox <- sf$st_bbox(.data)
       proxy <- leaflet$leafletProxy("map", data = .data) |>
-        leaflet$clearShapes() |>
-        leaflet$clearControls()
+        leaflet$clearGroup("eodGroup")
       
       leaflet$flyToBounds(
         proxy,
@@ -1129,6 +1226,7 @@ server <- function(id) {
       if (all(sf$st_is(.data, c("POLYGON", "MULTIPOLYGON")))) {
         leaflet$addPolygons(
           proxy,
+          group = "eodGroup",
           weight = 1,
           color = "black",
           fill = TRUE,
@@ -1142,22 +1240,27 @@ server <- function(id) {
             fillOpacity = 1,
             bringToFront = TRUE,
             sendToBack = TRUE
-          )
+          ),
+          options = leaflet$pathOptions(pane = "eodPane")
         )
       } else if (all(sf$st_is(.data, c("POINT", "MULTIPOINT")))) {
         leaflet$addCircleMarkers(
           proxy,
+          group = "eodGroup",
           weight = 1,
           color = ~palette(.linked),
           fill = TRUE,
           fillColor = ~.linked,
-          opacity = 0.5
+          opacity = 0.5,
+          options = leaflet$pathOptions(pane = "eodPane")
         )
       }
       
       leaflet$addLegend(
         proxy,
         "bottomright",
+        layerId = session$ns("eodLegend"),
+        group = "eodGroup",
         pal = palette,
         values = ~.linked,
         title = paste(
@@ -1165,6 +1268,13 @@ server <- function(id) {
           sprintf("(in %s)", isolate(param_meta()$unit))
         ),
         opacity = 1
+      )
+
+      addSidebyside(
+        proxy,
+        layerId = session$ns("sidebyside"),
+        leftId = session$ns("svyTiles"),
+        rightId = session$ns("svyTiles")
       )
     }))
   })

@@ -56,13 +56,21 @@ execute_safely <- function(expr,
 
       if (is.null(error_fun)) {
         if (!toast) {
+          traceback <- rlang::trace_back()
           send_error(div(
             style = "text-align: left",
             message,
             ...,
             br(), br(),
             "Error details:", br(),
-            tags$pre(cli_to_html(e, warn = FALSE), style = "max-height: 30vh")
+            tags$pre(cli_to_html(e, warn = FALSE), style = "max-height: 20vh"),
+            if (length(traceback$call)) {
+              traceback_fmt <- paste(format(traceback), collapse = "\n")
+              tags$details(
+                tags$summary("Traceback"),
+                tags$pre(cli_to_html(traceback_fmt, warn = FALSE), style = "max-height: 20vh")
+              )
+            }
           ), session = session, title = title, size = "l")
         } else {
           toast(

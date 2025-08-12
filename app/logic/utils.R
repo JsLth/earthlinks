@@ -113,6 +113,34 @@ between <- function(x, lower, upper) {
 }
 
 
+is_integerish <- function(x, tol = .Machine$double.eps ^ 0.5) {
+  is.numeric(x) && all(abs(x - round(x)) < tol, na.rm = TRUE)
+}
+
+
+is_categorical <- function(x) {
+  (is.factor(x) && !is.ordered(x)) ||
+  is.character(x) ||
+  is.logical(x) ||
+  (is_integerish(x) && length(unique(x[!is.na(x)])) < 10)
+}
+
+
+is_continuous <- function(x) {
+  !is_categorical(x) && (is.numeric(x) || is.ordered(x))
+}
+
+
+is_diverging <- function(x) {
+  is_continuous(x) && any(x < 0) && any(x > 0)
+}
+
+
+is_valid_for_leaflet <- function(x) {
+  is_categorical(x) || is_continuous(x)
+}
+
+
 is_crs_mismatch <- function(x, crs = sf::st_crs(x)) {
   is_geographic <- crs$IsGeographic
   bbox <- sf::st_bbox(sf::st_set_crs(x, crs))

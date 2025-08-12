@@ -1,4 +1,3 @@
-box::use(dplyr[bind_rows, mutate, case_match])
 box::use(app/logic/widgets[pal_icon], app/logic/utils[bind_rows])
 
 types <- c("sequential", "diverging", "divergingx", "qualitative")
