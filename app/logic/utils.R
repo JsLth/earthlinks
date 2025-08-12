@@ -1,3 +1,8 @@
+"%zchar%" <- function(x, y) {
+  if (all(!nzchar(x))) y else x
+}
+
+
 invert <- function(x) {
   nm <- names(x)
   names(nm) <- x
@@ -118,4 +123,49 @@ is_crs_mismatch <- function(x, crs = sf::st_crs(x)) {
     bbox["ymin"] < (-90 - eps) ||
     bbox["ymax"] > (90 + eps)
   )
+}
+
+
+unbox <- function(x) {
+  if (is.list(x) && length(x) == 1) {
+    x <- x[[1]]
+  }
+  x
+}
+
+
+rbind_list <- function(args) {
+  nam <- lapply(args, names)
+  unam <- unique(unlist(nam))
+  len <- vapply(args, length, numeric(1))
+  out <- vector("list", length(len))
+  for (i in seq_along(len)) {
+    if (nrow(args[[i]])) {
+      nam_diff <- setdiff(unam, nam[[i]])
+      if (length(nam_diff)) {
+        args[[i]][nam_diff] <- NA
+      }
+    } else {
+      next
+    }
+  }
+  out <- suppressWarnings(do.call(rbind, args))
+  rownames(out) <- NULL
+  out
+}
+
+
+bind_rows <- function(..., .id = NULL) {
+  dots <- unbox(list(...))
+  out <- rbind_list(dots)
+  if (!is.null(.id) && length(out)) {
+    names <- names(dots)
+    nrows <- vapply(dots, nrow, numeric(1))
+    ids <- rep(names, times = nrows)
+    ids <- data.frame(ids)
+    names(ids) <- .id
+    out <- cbind(ids, out)
+  }
+  
+  tibble::tibble(out)
 }

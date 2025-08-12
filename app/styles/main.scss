@@ -213,6 +213,22 @@ div.vertical-stack {
 }
 
 
+.pal-block {
+  display: inline-flex;
+  align-items: center;
+  width: 2rem;
+  height: 0.5rem;
+  flex-shrink: 0;
+  margin-right: 0.3rem;
+}
+
+
+.pal-square {
+  flex: 1;
+  aspect-ratio: 1/1;
+  display: inline-block;
+}
+
 
 /* Overwrite bootstrap styling */
 

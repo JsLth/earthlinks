@@ -1,3 +1,20 @@
+pal_icon <- function(colors) {
+  shiny::span(
+    style = "display: inline-flex; align-items: center; gap: 0.3rem;",
+    shiny::span(
+      style = "display: inline-flex; width: 1.5rem; height: 0.5rem; flex-shrink: 0;",
+      shiny::tagList(lapply(colors, function(col) {
+        shiny::span(style = htmltools::css(
+          background = col,
+          flex = 1,
+          `aspect-ratio` = "1/1"
+        ))
+      }))
+    )
+  )
+}
+
+
 show_more <- function(text) {
   shiny::div(
     shiny::p(text, class = "text-expand"),
@@ -20,17 +37,16 @@ show_more <- function(text) {
 }
 
 
-helpful_widget <- function(widget,
-                           label = NULL,
-                           tip = NULL,
-                           config = NULL,
-                           id = NULL,
-                           inline = FALSE,
-                           ...) {
+helpful <- function(widget,
+                    label = NULL,
+                    tip = NULL,
+                    config = NULL,
+                    id = NULL,
+                    inline = FALSE,
+                    ...) {
   shiny::div(
     id = id,
     class = if (!inline) "vertical-stack",
-    ...,
     shiny::span(
       class = c(if (inline) "d-inline-flex", "pseudo-label"),
       if (inline) widget,
@@ -38,7 +54,8 @@ helpful_widget <- function(widget,
       if (!is.null(tip)) spacer(inline = inline),
       if (!is.null(tip)) tip,
       if (!is.null(config)) spacer(inline = inline),
-      if (!is.null(config)) config
+      if (!is.null(config)) config,
+      ...
     ),
     if (!inline) widget
   )

@@ -5,7 +5,7 @@ box::use(
   leaflet,
   sf,
   shiny[...],
-  shinyWidgets[pickerInput],
+  shinyWidgets[pickerInput, airDatepickerInput],
   giscoR[gisco_get_nuts],
   countrycode[countrycode],
   
@@ -17,6 +17,7 @@ box::use(
   app/logic/codes[search_param],
   app/logic/utils[...],
   app/logic/jsutils[toast, remove_toast, liveCounter],
+  app/logic/enum[palettes, units],
   
 )
 
@@ -33,9 +34,6 @@ indicators <- c(
   "Total cloud cover" = "total_cloud_cover",
   "10 metre wind speed" = "10m_wind_speed"
 )
-
-
-units <- jsonlite::fromJSON("https://codes.ecmwf.int/parameter-database/api/v1/unit/?format=json")
 
 
 theme <- bs_theme(
@@ -89,6 +87,25 @@ theme <- bs_theme(
 
     .btn-close {
       --bs-btn-close-focus-shadow: rgba(0, 0, 0, 0)
+    }
+    
+    .vscomp-toggle-button {
+      border: var(--bs-border-width) solid #8D959E !important;
+      border-radius: var(--bs-border-radius);
+      background-color: var(--bs-body-bg) !important;
+      transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+      background-clip: padding-box;
+      color: var(--bs-body-color) ;
+      line-height: 1.5;
+      font-weight: 400;
+    }
+    
+    .vscomp-wrapper:focus .vscomp-toggle-button {
+      color: var(--bs-body-color);
+      background-color: var(--bs-body-bg) !important;
+      border-color: #e980b2 !important;
+      outline: 0;
+      box-shadow: 0 0 0 .25rem rgba(210, 0, 100, 0.25) !important;
     }
   ")
 
@@ -173,7 +190,7 @@ ui <- function(id) {
           value = ns("input"),
           
           ### File input ----
-          widgets$helpful_widget(
+          widgets$helpful(
             fileInput(
               ns("file"),
               label = NULL
@@ -216,13 +233,34 @@ ui <- function(id) {
             )
           ),
           
+          ### Example data ----
+          widgets$helpful(
+            actionButton(
+              ns("example_data"),
+              label = tagList(
+                bsicons::bs_icon("file-earmark-spreadsheet"),
+                "Load example data"
+              )
+            ),
+            label = "Just want to look around? No worries!",
+            tip = widgets$tip(HTML(
+              "By clicking on this button, you will load pre-processed
+              example data from the <a href='https://www.europeansocialsurvey.org/'>
+              European Social Survey</a> (ESS) that you can use to try out
+              the functions of this app. You can always go back to load
+              your own dataset by selecting a file."
+            ))
+          ),
+          
+          hr(style = "margin-top: 0rem; margin-bottom: 1rem;"),
+          
           ### Non-GIS file specs ----
           shinyjs::hidden(
             div(
               id = ns("non_gis_file_container"),
               
               #### Coordinates ----
-              widgets$helpful_widget(
+              widgets$helpful(
                 selectizeInput(
                   ns("non_gis_geometry"),
                   choices = list(),
@@ -246,7 +284,7 @@ ui <- function(id) {
               ),
               
               #### CRS ----
-              widgets$helpful_widget(
+              widgets$helpful(
                 selectizeInput(
                   ns("non_gis_crs"),
                   choices = list(
@@ -294,16 +332,22 @@ ui <- function(id) {
           
           ### Flat date ----
           shinyjs::hidden(
-            widgets$helpful_widget(
-              id = ns("flate_date_container"),
-              dateInput(ns("flat_date"), label = NULL),
-              label = "Please select a flat date",
+            widgets$helpful(
+              id = ns("flat_date_container"),
+              airDatepickerInput(
+                ns("flat_date"),
+                label = NULL,
+                range = TRUE,
+                addon = "none",
+                view = "years",
+                update_on = "close"
+              ),
+              label = "Select a time frame that describes your data",
               tip = widgets$tip(tagList(
                 p(
                   "The dataset you have loaded does not contain a date vector
                   in your specified date field. You can choose to either:"
                 ),
-                br(),
                 tags$ul(
                   tags$li("Specify a flat date for all data points using this input"),
                   tags$li("Specify the column name where your time data is stored. Click the", bsicons::bs_icon("gear"), "icon next to the data input to specify a date column.")
@@ -312,23 +356,56 @@ ui <- function(id) {
             )
           ),
           
-          ### Example data ----
-          widgets$helpful_widget(
-            actionButton(
-              ns("example_data"),
-              label = tagList(
-                bsicons::bs_icon("file-earmark-spreadsheet"),
-                "Load example data"
+          ### Showcase column ----
+          shinyjs::hidden(
+            widgets$helpful(
+              id = ns("showcase_col_container"),
+              shinyWidgets::virtualSelectInput(
+                ns("showcase_col"),
+                label = NULL,
+                choices = list(),
+                search = TRUE
+              ),
+              label = "Which column do you want to show on the map?",
+              tip = widgets$tip(HTML(
+                "Your selected dataset contains multiple features but only
+                  one of them can be displayed on the map. This step lets
+                  you select a column from your dataset to display on the map
+                  alongside your linked earth observation data."
+              )),
+              config = widgets$config(
+                div(
+                  div(
+                    textInput(
+                      ns("showcase_desc"),
+                      label = "Enter a title for the column",
+                      placeholder = "e.g., Gross Domestic Product"
+                    )
+                  ),
+                  div(
+                    textInput(
+                      ns("showcase_unit"),
+                      label = "Is there a unit that describes the feature?",
+                      placeholder = "e.g., euro per capita"
+                    )
+                  ),
+                  shinyWidgets::virtualSelectInput(
+                    ns("showcase_palette"),
+                    label = "What color palette should the feature be shown in?",
+                    choices = shinyWidgets::prepare_choices(
+                      palettes,
+                      label = palette,
+                      value = palette,
+                      group_by = type
+                    ),
+                    selected = "Viridis",
+                    search = TRUE,
+                    html = TRUE,
+                    labelRenderer = "renderPalette"
+                  )
+                )
               )
-            ),
-            label = "Just want to look around? No worries!",
-            tip = widgets$tip(HTML(
-              "By clicking on this button, you will load pre-processed
-              example data from the <a href='https://www.europeansocialsurvey.org/'>
-              European Social Survey</a> (ESS) that you can use to try out
-              the functions of this app. You can always go back to load
-              your own dataset by selecting a file."
-            ))
+            )
           ),
           
           ### Data details ----
@@ -350,7 +427,7 @@ ui <- function(id) {
           title = tags$b("Indicator selection"),
           value = ns("indicator_select"),
           
-          # widgets$helpful_widget(
+          # widgets$helpful(
           #   pickerInput(
           #     ns("data_provider"),
           #     choices = list(
@@ -362,7 +439,7 @@ ui <- function(id) {
           # )
           
           ### Time level ----
-          widgets$helpful_widget(
+          widgets$helpful(
             radioButtons(
               ns("time_level"),
               label = NULL,
@@ -392,7 +469,7 @@ ui <- function(id) {
           ),
           
           ### ERA-Land ----
-          widgets$helpful_widget(
+          widgets$helpful(
             checkboxInput(ns("land"), label = NULL, value = TRUE, width = "auto"),
             label = "Only include land areas?",
             tip = widgets$tip(div(HTML(
@@ -406,7 +483,7 @@ ui <- function(id) {
           ),
           
           ### Indicator ----
-          widgets$helpful_widget(
+          widgets$helpful(
             selectInput(
               ns("indicator"),
               label = NULL,
@@ -461,6 +538,7 @@ server <- function(id) {
     parsed <- reactiveVal(NULL) # parsed file object, yet to be cleaned
     .data <- reactiveVal(NULL) # data ready to be linked
     dates <- reactiveVal(NULL) # date information from .data()
+    example_data_loaded <- FALSE
     
     
     # Input data ----
@@ -499,6 +577,7 @@ server <- function(id) {
         sf$read_sf(path)
       }
       
+      example_data_loaded <<- FALSE
       parsed(new)
     })) |>
       bindEvent(input$file)
@@ -506,7 +585,7 @@ server <- function(id) {
     
     # Example data ----
     observe(execute_safely({
-      new <- utils::read.csv("app/static/ESS11-subset.csv")[c("cntry", "wrclmch")]
+      new <- utils::read.csv("app/data/ESS11-subset.csv")[c("cntry", "wrclmch")]
       new <- stats::aggregate(wrclmch ~ cntry, new, mean)
       countries <- unique(new$cntry)
       geom <- gisco_get_nuts(
@@ -530,15 +609,24 @@ server <- function(id) {
       ))
       names(new) <- c("country", "climate_concern", "geometry")
       new$date <- as.POSIXct("2023-01-01")
+      example_data_loaded <<- TRUE
+      parsed(new)
       .data(new)
     })) |>
       bindEvent(input$example_data)
 
     
+    # Reset file input ----
+    observe({
+      session$sendCustomMessage(type = "resetFileInputHandler", session$ns("file"))
+    }) |>
+      bindEvent(input$example_data)
+    
+    
     # Non-GIS - show/hide ----
     observe({
       ext <- tools::file_ext(input$file$datapath)
-      if (any(ext %in% c("csv", "dta", "sav", "por"))) {
+      if (any(ext %in% c("csv", "dta", "sav", "por")) && !example_data_loaded) {
         shinyjs::show("non_gis_file_container", anim = TRUE)
         toast(
           sprintf(
@@ -631,7 +719,7 @@ server <- function(id) {
     
     # Flat date - show/hide ----
     observe({
-      if (!input$date_column %in% names(parsed())) {
+      if (!input$date_column %in% names(parsed()) && !example_data_loaded) {
         shinyjs::show("flat_date_container", anim = TRUE)
       } else {
         shinyjs::hide("flat_date_container", anim = TRUE)
@@ -649,6 +737,21 @@ server <- function(id) {
       }
     }) |>
       bindEvent(.data() %||% parsed())
+    
+    
+    # Showcase - show/hide ----
+    observe({
+      req(.data())
+      if (ncol(.data()) > 2) {
+        shinyWidgets::updateVirtualSelect(
+          "showcase_col",
+          choices = setdiff(names(.data()), "geometry")
+        )
+        shinyjs::show("showcase_col_container", anim = TRUE)
+      } else {
+        shinyjs::hide("showcase_col_container", anim = TRUE)
+      }
+    })
     
     
     # Data details - show ----
@@ -696,12 +799,20 @@ server <- function(id) {
             div(
               style = "display: flex; align-items: center; gap: 8px;",
               bsicons::bs_icon("list-ul"),
-              sprintf("%s records", details$records)
+              sprintf(
+                "%s record%s",
+                details$records,
+                ifelse(details$records == 1, "", "s")
+              )
             ),
             div(
               style = "display: flex; align-items: center; gap: 8px;",
               bsicons::bs_icon("diagram-3"),
-              sprintf("%s features", details$variables)
+              sprintf(
+                "%s feature%s",
+                details$variables,
+                ifelse(details$variables == 1, "", "s")
+              )
             )
           )
         ),
@@ -913,21 +1024,50 @@ server <- function(id) {
         lng2 = bbox[["xmax"]],
         lat2 = bbox[["ymax"]]
       )
+      
+      showcase_col <- input$showcase_col
+      showcase_given <- nzchar(showcase_col)
+      if (showcase_given) {
+        domain <- .data[[showcase_col]]
+        
+        if (is.numeric(domain)) {
+          pal <- leaflet$colorBin(
+            grDevices::hcl.colors(n = 50, input$showcase_palette),
+            domain = domain
+          )
+        } else {
+          pal <- leaflet$colorFactor(
+            grDevices::hcl.colors(n = 50, input$showcase_palette),
+            domain = domain,
+            levels = if (is.factor(domain)) {
+              levels(domain)
+            } else {
+              sort(unique(domain))
+            },
+            ordered = is.ordered(domain)
+          )
+        }
+      }
 
       if (all(sf$st_is(.data, c("POLYGON", "MULTIPOLYGON")))) {
+        fill_opacity <- if (showcase_given) 1 else 0.001
         leaflet$addPolygons(
           proxy,
           weight = 1,
           color = "black",
           fill = TRUE,
-          fillColor = "white",
-          fillOpacity = 0.001,
+          fillColor = if (showcase_given) {
+            stats::as.formula(sprintf("~pal(%s)", showcase_col))
+          } else {
+            "white"
+          },
+          fillOpacity = fill_opacity,
           opacity = 0.5,
           highlightOptions = leaflet$highlightOptions(
             weight = 2,
             color = "black",
             opacity = 0.5,
-            fillOpacity = 0.001,
+            fillOpacity = fill_opacity,
             bringToFront = TRUE,
             sendToBack = TRUE
           )
@@ -936,9 +1076,32 @@ server <- function(id) {
         leaflet$addCircleMarkers(
           proxy,
           radius = 0.5,
-          color = "black",
+          color = if (showcase_given) {
+            stats::as.formula(sprintf("~pal(%s)", showcase_col))
+          } else {
+            "black"
+          },
           opacity = 1,
           fillOpacity = 1
+        )
+      }
+      
+      if (showcase_given) {
+        leaflet$addLegend(
+          proxy,
+          position = "bottomright",
+          pal = pal,
+          values = stats::as.formula(sprintf("~%s", showcase_col)),
+          title = paste(
+            input$showcase_desc %zchar% showcase_col,
+            if (nzchar(input$showcase_unit)) {
+              sprintf("(in %s)", input$showcase_unit)
+            } else {
+              NULL
+            }
+          ),
+          na.label = "N/A",
+          opacity = 1
         )
       }
     }))
