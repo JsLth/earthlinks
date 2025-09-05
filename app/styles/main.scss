@@ -111,7 +111,6 @@ body {
 
 
 /* change font family of shiny inputs to monospace */
-.code-input,
 .code-input .shiny-input-text {
   font-family: monospace !important;
 }
@@ -229,6 +228,24 @@ div.vertical-stack {
   flex: 1;
   aspect-ratio: 1/1;
   display: inline-block;
+}
+
+
+/* formatted in-text numbering */
+.number-circle {
+  display: inline-block;
+  line-height: 0px;
+  border-radius: 50%;
+  border: 0.1rem solid;
+  margin: 0px 2px;
+}
+
+.number-circle span {
+  display: inline-block;
+  padding-top: 50%;
+  padding-bottom: 50%;
+  margin-left: 5px;
+  margin-right: 5px;
 }
 
 

@@ -4,6 +4,7 @@ box::use(
   htmlwidgets[onRender],
   leaflet,
   sf,
+  shinyjs,
   shiny[...],
   shinyWidgets,
   giscoR[gisco_get_nuts],
@@ -19,7 +20,7 @@ box::use(
   app/logic/codes[search_param],
   app/logic/utils[...],
   app/logic/time_utils[...],
-  app/logic/jsutils[toast, remove_toast, liveCounter],
+  app/logic/jsutils[toast, remove_toast, liveCounter, remove_tooltip],
   app/logic/enum[palettes, units],
   
 )
@@ -184,7 +185,14 @@ ui <- function(id) {
         accordion_panel(
           title = tags$b("What is EarthLinks?"),
           value = ns("intro"),
-          lorem::ipsum(1, sentences = 3)
+          p(
+            "This tool is designed to help you access earth observation data and link it to any social science
+            (survey) dataset in an intuitive, interactive way. Simply",
+            widgets$no(1), "load a dataset,",
+            widgets$no(2), "select an earth observation indicator,",
+            widgets$no(3), "link the two datasets, and",
+            widgets$no(4), "explore and download the linked data."
+          )
         ),
 
         ## Input data ----
@@ -206,6 +214,7 @@ ui <- function(id) {
               "stored in a common R or GIS format. This includes:<br>
               <ul>
                 <li><b>R files:</b> rds, <a href='https://cran.r-project.org/package=qs2'>qs</a></li>
+                <li><b>Tabular files:</b> csv</li>
                 <li><b>Stata or SPSS files:</b> dta, sav, por
                 <li><b>Geospatial files:</b> shp, geojson, gpkg, and others
               </ul>"
@@ -258,7 +267,7 @@ ui <- function(id) {
           hr(style = "margin-top: 0rem; margin-bottom: 1rem;"),
           
           ### Non-GIS file specs ----
-          shinyjs::hidden(
+          shinyjs$hidden(
             div(
               id = ns("non_gis_file_container"),
               
@@ -322,7 +331,7 @@ ui <- function(id) {
           ),
           
           ### Flat date ----
-          shinyjs::hidden(
+          shinyjs$hidden(
             widgets$helpful(
               id = ns("flat_date_container"),
               shinyWidgets$airDatepickerInput(
@@ -348,7 +357,7 @@ ui <- function(id) {
           ),
           
           ### Showcase column ----
-          shinyjs::hidden(
+          shinyjs$hidden(
             widgets$helpful(
               id = ns("showcase_col_container"),
               shinyWidgets$virtualSelectInput(
@@ -404,7 +413,7 @@ ui <- function(id) {
           ),
           
           ### Data details ----
-          shinyjs::hidden(
+          shinyjs$hidden(
             card(
               max_height = 250,
               id = ns("data_details_container"),
@@ -505,6 +514,24 @@ ui <- function(id) {
         accordion_panel(
           title = tags$b("Finalize"),
           value = ns("finalize"),
+
+          widgets$helpful(
+            widgets$passwordInputToggle(
+              ns("api_key"),
+              label = NULL,
+              placeholder = "API key"
+            ),
+            label = "Enter your API key",
+            tip = widgets$tip(div(HTML(
+              "To access earth observation data, EarthLinks needs to communicate with various
+              <a href='https://en.wikipedia.org/wiki/API'>APIs</a> (application programming interfaces).
+              To proceed, please register with ECMWF (<a href='https://www.ecmwf.int/'>Link</a>) and
+              retrieve your API key (<a href='https://api.ecmwf.int/v1/key/'>Link</a>)."
+            )))
+          ),
+
+          br(),
+
           bslib::input_task_button(
             ns("do_link"),
             label = "Download and link",
@@ -512,6 +539,14 @@ ui <- function(id) {
             label_busy = "Linking...",
             type = "default"
           )
+        ),
+
+
+        ## Explore ----
+        accordion_panel(
+          title = tags$b("Explore"),
+          value = ns("explore"),
+          lorem::ipsum()
         )
       )
     )
@@ -532,7 +567,18 @@ server <- function(id) {
     .data <- reactiveVal(NULL) # data ready to be linked
     dates <- reactiveVal(NULL) # date information from .data()
     example_data_loaded <- FALSE
+    api_keys <- list(
+      ecmwf = NULL
+    )
     
+
+    # Restore old API keys ----
+    onSessionEnded(function() {
+      if (!is.null(api_keys$ecmwf)) {
+        keyring::key_set_with_value("ecmwfr", "ecmwfr", password = api_keys$ecmwf)
+      }
+    })
+
     
     # Input data ----
     observe(execute_safely({
@@ -590,6 +636,7 @@ server <- function(id) {
       ))
       names(new) <- c("country", "date", "climate_concern", "geometry")
       new$date <- as.Date(as.POSIXct(new$date))
+      new$date <- as.Date(as.POSIXct("2022-01-01"))
       example_data_loaded <<- TRUE
       parsed(new)
       .data(new)
@@ -610,7 +657,7 @@ server <- function(id) {
       if (length(ext) &&
           any(ext %in% c("csv", "dta", "sav", "por", "rds", "qs")) &&
           !example_data_loaded) {
-        shinyjs::show("non_gis_file_container", anim = TRUE)
+        shinyjs$show("non_gis_file_container", anim = TRUE)
         toast(
           sprintf(
             "You loaded a %s file. We tried to automatically infer the
@@ -645,7 +692,7 @@ server <- function(id) {
         
         
       } else {
-        shinyjs::hide("non_gis_file_container", anim = TRUE)
+        shinyjs$hide("non_gis_file_container", anim = TRUE)
       }
     })) |>
       bindEvent(parsed())
@@ -665,7 +712,7 @@ server <- function(id) {
       
       freezeReactiveValue(input, "non_gis_crs")
       updateSelectizeInput(session = session, "non_gis_crs", selected = selected)
-    })) |>
+    }), priority = 401) |>
       bindEvent(req(
         parsed(),
         input$non_gis_geometry,
@@ -697,15 +744,15 @@ server <- function(id) {
       }
       
       .data(new_sf)
-    }))
+    }), priority = 400)
     
     
     # Flat date - show/hide ----
     observe(execute_safely({
       if (!input$date_column %in% names(parsed()) && !example_data_loaded) {
-        shinyjs::show("flat_date_container", anim = TRUE)
+        shinyjs$show("flat_date_container", anim = TRUE)
       } else {
-        shinyjs::hide("flat_date_container", anim = TRUE)
+        shinyjs$hide("flat_date_container", anim = TRUE)
       }
     })) |>
       bindEvent(parsed())
@@ -741,7 +788,7 @@ server <- function(id) {
         req(FALSE)
       }
       
-      if (ncol(.data) > 2) {
+      if (ncol(.data) > 1) {
         # Select the first column in input data that can be plotted
         selected <- NULL
         for (feat in featnames) {
@@ -771,14 +818,14 @@ server <- function(id) {
           selected = featnames[[1]]
         )
 
-        shinyjs::show("showcase_col_container", anim = TRUE)
+        shinyjs$show("showcase_col_container", anim = TRUE)
       } else {
         shinyWidgets$updateVirtualSelect(
           "showcase_col",
           choices = list(featnames),
           selected = featnames[[1]]
         )
-        shinyjs::hide("showcase_col_container", anim = TRUE)
+        shinyjs$hide("showcase_col_container", anim = TRUE)
       }
     }))
     
@@ -810,7 +857,7 @@ server <- function(id) {
     # Data details - show ----
     observe(execute_safely({
       req(.data() %||% parsed(), dates())
-      shinyjs::show("data_details_container", anim = TRUE)
+      shinyjs$show("data_details_container", anim = TRUE)
     }))
     
     
@@ -975,15 +1022,39 @@ server <- function(id) {
         selected = selected
       )
     }))
-    
+
+
+    key <- key_get0("ecmwfr", "ecmwfr")
+    if (!is.null(key)) {
+      updateTextInput(session, "api_key", value = key)
+    }
+
+
+    # Check API key ----
+    observe({
+      key <- key_get0("ecmwfr", "ecwfr")
+      if (nzchar(input$api_key)) {
+        api_keys$ecmwf <<- key
+        keyring::key_set_with_value("ecmwfr", "ecmwfr", password = input$api_key)
+      }
+    }) |>
+      bindEvent(input$api_key)
+
     
     # Perform linking ----
-    linked <- reactive(execute_safely({
+    linked <- reactive({
       req_else(.data(), toast(
         message = HTML("Please provide a dataset before trying to link.<br>
           You can do this by navigating to \"Input data\" and either
           selecting data from a file or loading up our example dataset."),
-        type = "danger"
+        type = "danger",
+        title = "Input data missing!"
+      ))
+
+      req_else(key_get0("ecmwfr", "ecmwfr"), toast(
+        message = "Please provide a working API key for the ECMWF API.",
+        type = "danger",
+        title = "No API key provided!"
       ))
       
       toast(
@@ -998,6 +1069,8 @@ server <- function(id) {
         autohide = FALSE,
         id = "link_idle"
       )
+
+      on.exit(remove_toast("link_idle"))
       
       indicator <- indicators[[input$indicator]]
       .data <- .data()
@@ -1030,8 +1103,8 @@ server <- function(id) {
               tags$blockquote(e$message),
               p("This is can either be a problem with the API (e.g., server
               problems, problems with your account) or with your data.
-              Check if the spatial and temporal extent of your input data
-              is plausible and then retry.")
+              Check your API key, your internet connection as well as the spatial
+              and temporal resolution of your data - then try again.")
             ),
             size = "m",
             title = "Error during linking"
@@ -1039,9 +1112,8 @@ server <- function(id) {
         }
       )
       
-      remove_toast("link_idle")
       out
-    })) |>
+    }) |>
       bindEvent(input$do_link)
     
     
@@ -1164,7 +1236,7 @@ server <- function(id) {
           color = if (showcase_given) {
             pal(domain)
           } else {
-            "white"
+            "black"
           },
           opacity = 1,
           fillOpacity = 1,
@@ -1211,76 +1283,79 @@ server <- function(id) {
     
     
     # Add linked data to map ----
-    observe(execute_safely({
-      req(linked())
-      .data <- sf$st_transform(linked(), 4326)
-      bbox <- sf$st_bbox(.data)
-      proxy <- leaflet$leafletProxy("map", data = .data) |>
-        leaflet$clearGroup("eodGroup")
-      
-      leaflet$flyToBounds(
-        proxy,
-        lng1 = bbox[["xmin"]],
-        lat1 = bbox[["ymin"]],
-        lng2 = bbox[["xmax"]],
-        lat2 = bbox[["ymax"]]
-      )
-      
-      palette <- leaflet$colorBin(palette = "viridis", domain = .data$.linked)
-      
-      if (all(sf$st_is(.data, c("POLYGON", "MULTIPOLYGON")))) {
-        leaflet$addPolygons(
+    observe({
+      linked <- linked()
+      req(linked)
+      execute_safely({
+        .data <- sf$st_transform(linked, 4326)
+        bbox <- sf$st_bbox(.data)
+        proxy <- leaflet$leafletProxy("map", data = .data) |>
+          leaflet$clearGroup("eodGroup")
+        
+        leaflet$flyToBounds(
           proxy,
-          group = "eodGroup",
-          weight = 1,
-          color = "black",
-          fill = TRUE,
-          fillColor = ~palette(.linked),
-          fillOpacity = 0.8,
-          opacity = 0.5,
-          highlightOptions = leaflet$highlightOptions(
-            weight = 2,
+          lng1 = bbox[["xmin"]],
+          lat1 = bbox[["ymin"]],
+          lng2 = bbox[["xmax"]],
+          lat2 = bbox[["ymax"]]
+        )
+        
+        palette <- leaflet$colorBin(palette = "viridis", domain = .data$.linked)
+        
+        if (all(sf$st_is(.data, c("POLYGON", "MULTIPOLYGON")))) {
+          leaflet$addPolygons(
+            proxy,
+            group = "eodGroup",
+            weight = 1,
             color = "black",
-            opacity = 0.1,
-            fillOpacity = 1,
-            bringToFront = TRUE,
-            sendToBack = TRUE
-          ),
-          options = leaflet$pathOptions(pane = "eodPane")
-        )
-      } else if (all(sf$st_is(.data, c("POINT", "MULTIPOINT")))) {
-        leaflet$addCircleMarkers(
+            fill = TRUE,
+            fillColor = ~palette(.linked),
+            fillOpacity = 0.8,
+            opacity = 0.5,
+            highlightOptions = leaflet$highlightOptions(
+              weight = 2,
+              color = "black",
+              opacity = 0.1,
+              fillOpacity = 1,
+              bringToFront = TRUE,
+              sendToBack = TRUE
+            ),
+            options = leaflet$pathOptions(pane = "eodPane")
+          )
+        } else if (all(sf$st_is(.data, c("POINT", "MULTIPOINT")))) {
+          leaflet$addCircleMarkers(
+            proxy,
+            group = "eodGroup",
+            weight = 1,
+            color = ~palette(.linked),
+            fill = TRUE,
+            fillColor = ~.linked,
+            opacity = 0.5,
+            options = leaflet$pathOptions(pane = "eodPane")
+          )
+        }
+        
+        leaflet$addLegend(
           proxy,
+          "bottomright",
+          layerId = session$ns("eodLegend"),
           group = "eodGroup",
-          weight = 1,
-          color = ~palette(.linked),
-          fill = TRUE,
-          fillColor = ~.linked,
-          opacity = 0.5,
-          options = leaflet$pathOptions(pane = "eodPane")
+          pal = palette,
+          values = ~.linked,
+          title = paste(
+            isolate(input$indicator),
+            sprintf("(in %s)", isolate(param_meta()$unit))
+          ),
+          opacity = 1
         )
-      }
-      
-      leaflet$addLegend(
-        proxy,
-        "bottomright",
-        layerId = session$ns("eodLegend"),
-        group = "eodGroup",
-        pal = palette,
-        values = ~.linked,
-        title = paste(
-          isolate(input$indicator),
-          sprintf("(in %s)", isolate(param_meta()$unit))
-        ),
-        opacity = 1
-      )
 
-      addSidebyside(
-        proxy,
-        layerId = session$ns("sidebyside"),
-        leftId = session$ns("svyTiles"),
-        rightId = session$ns("svyTiles")
-      )
-    }))
+        addSidebyside(
+          proxy,
+          layerId = session$ns("sidebyside"),
+          leftId = session$ns("svyTiles"),
+          rightId = session$ns("eodTiles")
+        )
+      })
+    })
   })
 }

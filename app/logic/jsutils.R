@@ -14,7 +14,7 @@ toast <- function(message,
                   id = NULL,
                   session = shiny::getDefaultReactiveDomain()) {
   layout <- match.arg(layout)
-  
+
   position = switch(
     position,
     topleft = "top-0 start-0",
@@ -72,4 +72,9 @@ liveCounter <- function(start = Sys.time(), id = NULL) {
     `data-start` = format(start, "%Y-%m-%dT%H:%M:%S%z"),
     class = "live-counter"
   )
+}
+
+
+remove_tooltip <- function(id, session = shiny::getDefaultReactiveDomain()) {
+  session$sendCustomMessage("remove-tooltip", id)
 }

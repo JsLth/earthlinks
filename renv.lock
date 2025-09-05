@@ -187,6 +187,16 @@
       ],
       "Hash": "c39f4155b3ceb1a9a2799d700fbd4b6a"
     },
+    "attempt": {
+      "Package": "attempt",
+      "Version": "0.3.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": [
+        "rlang"
+      ],
+      "Hash": "d7421bb5dfeb2676b9e4a5a60c2fcfd2"
+    },
     "backports": {
       "Package": "backports",
       "Version": "1.5.0",
@@ -620,6 +630,17 @@
         "methods"
       ],
       "Hash": "15aeb8c27f5ea5161f9f6a641fafd93a"
+    },
+    "gargoyle": {
+      "Package": "gargoyle",
+      "Version": "0.0.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Requirements": [
+        "attempt",
+        "shiny"
+      ],
+      "Hash": "ad2173d7d802e82abd78f6108d14c6d7"
     },
     "geojsonsf": {
       "Package": "geojsonsf",

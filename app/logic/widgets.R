@@ -115,3 +115,36 @@ callout <- function(..., type = "info", id = NULL) {
         font-size: 14px;"
   )
 }
+
+
+no <- function(number) {
+  shiny::span(class = "number-circle", shiny::span(number))
+}
+
+
+passwordInputToggle <- function(inputId, label, value = "", width = NULL, placeholder = NULL) {
+  shiny::div(
+    class = c("form-group", "shiny-input-container"),
+    width = width,
+    shiny::tags$label(
+      label,
+      class = "control-label",
+      class = if (is.null(label)) "shiny-label-null",
+      id = paste0(inputId, "-label"),
+      `for` = inputId
+    ),
+    shiny::div(
+      class = "input-group",
+      shiny::tags$input(id = inputId, type = "password", class = "form-control"),
+      shiny::tags$button(
+        class = "input-group-text",
+        onclick = sprintf("togglePassword('%s', '%s-toggle')", inputId, inputId),
+        shiny::span(
+          bsicons::bs_icon("eye"),
+          bsicons::bs_icon("eye-slash", display = "none"),
+          id = paste0(inputId, "-toggle")
+        )
+      )
+    )
+  )
+}

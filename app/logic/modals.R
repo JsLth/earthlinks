@@ -41,57 +41,59 @@ execute_safely <- function(expr,
     "<a href = 'mailto:jonas.lieth@gesis.org'>jonas.lieth@gesis.org</a>)."
   ))
 
-  tryCatch(
-    expr = {
-      # In case of warning, return expression
-      withCallingHandlers(
-        expr = shiny::withLogErrors(expr),
-        warning = function(w) {
-          toast(message = w$message, type = "warning", session = session)
-        }
-      )
-    },
-    error = function(e) {
-      # Stop without error message
-      if (inherits(e, "shiny.silent.error")) req(FALSE)
+  skip_warn <- FALSE
+  withCallingHandlers(
+    tryCatch(
+      shiny::withLogErrors(expr),
+      error = function(e) {
+        # Stop without error message
+        if (inherits(e, "shiny.silent.error")) req(FALSE)
 
-      if (is.null(error_fun)) {
-        if (!toast) {
-          traceback <- shiny::printStackTrace(e) |>
-            capture_ansi(type = "message") |>
-            paste(collapse = "\n")
+        skip_warn <<- TRUE
+        if (is.null(error_fun)) {
+          if (!toast) {
+            traceback <- shiny::printStackTrace(e) |>
+              capture_ansi(type = "message") |>
+              paste(collapse = "\n")
 
-          send_error(div(
-            style = "text-align: left",
-            message,
-            ...,
-            br(), br(),
-            "Error details:", br(),
-            tags$pre(cli_to_html(e, warn = FALSE), style = "max-height: 20vh"),
-            tags$details(
-              tags$summary("Traceback"),
-              tags$pre(cli_to_html(traceback, warn = FALSE), style = "max-height: 20vh")
+            send_error(div(
+              style = "text-align: left",
+              message,
+              ...,
+              br(), br(),
+              "Error details:", br(),
+              tags$pre(cli_to_html(e, warn = FALSE), style = "max-height: 20vh"),
+              tags$details(
+                tags$summary("Traceback"),
+                tags$pre(cli_to_html(traceback, warn = FALSE), style = "max-height: 20vh")
+              )
+            ), session = session, title = title, size = "l")
+          } else {
+            toast(
+              message = message,
+              title = title,
+              delay = 10000,
+              type = "danger"
             )
-          ), session = session, title = title, size = "l")
-        } else {
-          toast(
-            message = message,
-            title = title,
-            delay = 10000,
-            type = "danger"
-          )
-        }
+          }
 
-      } else {
-        error_fun(e)
+        } else {
+          error_fun(e)
+        }
+        
+        # Send error message and then stop
+        if (stopOperation) req(FALSE)
+        
+        return(e)
       }
-      
-      # Send error message and then stop
-      if (stopOperation) req(FALSE)
-      
-      return(e)
+    ),
+
+    warning = function(w) {
+      if (skip_warn) return()
+      toast(message = w$message, type = "warning", session = session)
     }
   )
+
 }
 
 

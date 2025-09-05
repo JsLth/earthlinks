@@ -169,3 +169,11 @@ capture_ansi <- function(..., type = c("output", "message")) {
   Sys.setenv(TERM = "xterm-256color")
   utils::capture.output(..., type = type)
 }
+
+
+key_get0 <- function(service, username = NULL, keyring = NULL) {
+  tryCatch(
+    keyring::key_get(service, username, keyring = keyring),
+    error = function(e) NULL
+  )
+}
