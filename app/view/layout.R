@@ -1,4 +1,5 @@
 box::use(
+  gxc[...],
   bslib[...],
   bsicons[bs_icon],
   htmlwidgets[onRender],
@@ -26,6 +27,7 @@ box::use(
 )
 
 options(cli.progress_handlers = "cli")
+old_maxRequestSize <- options(shiny.maxRequestSize = 5 * 1024 ^ 3)
 
 indicators <- c(
   "2 metre temperature" = "2m_temperature",
@@ -576,6 +578,7 @@ server <- function(id) {
     onSessionEnded(function() {
       if (!is.null(api_keys$ecmwf)) {
         keyring::key_set_with_value("ecmwfr", "ecmwfr", password = api_keys$ecmwf)
+        options(shiny.maxRequestSize = old_maxRequestSize)
       }
     })
 
@@ -704,6 +707,10 @@ server <- function(id) {
       x <- parsed[[input$non_gis_geometry[[1]]]]
       y <- parsed[[input$non_gis_geometry[[2]]]]
       
+      if (!is.numeric(x) || !is.numeric(y)) {
+        return()
+      }
+      
       if (all(between(x, -180, 180) & between(y, -90, 90))) {
         selected <- 4326
       } else {
@@ -722,12 +729,47 @@ server <- function(id) {
     
     # Non-GIS - convert ----
     observe(execute_safely({
-      req(length(input$non_gis_geometry) == 2, input$non_gis_crs)
+      req(
+        length(input$non_gis_geometry) == 2,
+        input$non_gis_geometry %in% names(parsed()),
+        input$non_gis_crs
+      )
+      
+      crs <- suppressWarnings(sf::st_crs(as.numeric(input$non_gis_crs)))
+      req_else(!anyNA(crs), toast(
+        "The coordinate reference system (CRS) you provided could not
+          be identified. Please validate your CRS on <a>https://epsg.io/</a>
+          and try again.",
+        title = "CRS could not be identified",
+        type = "danger",
+        delay = 10000
+      ))
+      
+      coord_cols <- unlist(input$non_gis_geometry, use.names = FALSE)
+      req_else(!anyNA(parsed()[, coord_cols]), toast(
+        sprintf(
+          "Some of the values within the columns \"%s\" and \"%s\"
+            contain missing values. Please remove them and load your
+            file again.", coord_cols[1], coord_cols[2]),
+        title = "Missing coordinates detected",
+        type = "danger",
+        delay = 10000
+      ))
+
+      req_else(all(vapply(parsed()[, coord_cols], is.numeric, FALSE)), toast(
+        "The coordinate columns you selected could not be parsed as
+          coordinates. Did you select the correct columns?",
+        title = "Invalid coordinates selected",
+        type = "danger",
+        delay = 10000
+      ))
+      
       new_sf <- sf$st_as_sf(
         parsed(),
-        coords = unlist(input$non_gis_geometry, use.names = FALSE),
-        crs = as.numeric(input$non_gis_crs)
+        coords = coord_cols,
+        crs = crs
       )
+      
       attr(new_sf, "bbox") <- sf$st_bbox(new_sf)
       
       if (is_crs_mismatch(new_sf)) {
@@ -856,14 +898,18 @@ server <- function(id) {
     
     # Data details - show ----
     observe(execute_safely({
-      req(.data() %||% parsed(), dates())
-      shinyjs$show("data_details_container", anim = TRUE)
+      if (isTruthy(.data() %||% parsed()) && isTruthy(dates())) {
+        shinyjs$show("data_details_container", anim = TRUE)
+      } else {
+        shinyjs$hide("data_details_container", anim = TRUE)
+      }
     }))
     
     
     # Data details - render ----
     output$data_details <- renderUI(execute_safely({
       req(dates())
+
       start <- min(as_date(dates()))
       end <- max(as_date(dates()))
 
@@ -1097,6 +1143,7 @@ server <- function(id) {
           }
         },
         error_fun = function(e) {
+          shiny::printError(e)
           send_error(
             tagList(
               p("The data provider returned the following error message:"),
