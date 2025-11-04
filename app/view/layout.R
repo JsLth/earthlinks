@@ -534,21 +534,60 @@ ui <- function(id) {
 
           br(),
 
-          bslib::input_task_button(
-            ns("do_link"),
-            label = "Download and link",
-            icon = bsicons::bs_icon("lightning-charge-fill"),
-            label_busy = "Linking...",
-            type = "default"
+          widgets$helpful(
+            bslib::input_task_button(
+              ns("do_link"),
+              label = "Link",
+              icon = bsicons::bs_icon("lightning-charge-fill"),
+              label_busy = "Linking...",
+              type = "default"
+            ),
+            label = "Download indicators and link"
+          ),
+          
+          br(),
+          
+          widgets$helpful(
+            shinyjs::disabled(
+              shiny::downloadButton(
+                ns("export"),
+                label = "Export"
+              )
+            ),
+            label = "Export to file",
+            tip = widgets$tip(div(HTML(sprintf(
+              "Click to export your linked data to a file.<br>By default,
+              drops geometries and saves the data as a CSV. You can change
+              this default by clicking on the options icon (%s)",
+              as.character(bsicons::bs_icon("gear")))
+            ))),
+            
+            config = widgets$config(
+              div(
+                shinyWidgets::virtualSelectInput(
+                  ns("output_format"),
+                  label = "Select an output format",
+                  choices = list(
+                    CSV = "csv",
+                    RDS = "rds",
+                    Stata = "dta",
+                    SPSS = "sav",
+                    GeoJSON = "geojson",
+                    GeoPackage = "gpkg",
+                    Shapefile = "shp"
+                  )
+                ),
+                
+                numericInput(
+                  ns("output_stataVersion"),
+                  label = "Stata file version",
+                  value = 14,
+                  min = 8,
+                  max = 15
+                )
+              )
+            )
           )
-        ),
-
-
-        ## Explore ----
-        accordion_panel(
-          title = tags$b("Explore"),
-          value = ns("explore"),
-          lorem::ipsum()
         )
       )
     )
@@ -605,6 +644,7 @@ server <- function(id) {
         )
       )
       
+      shinyjs::disable("export")
       example_data_loaded <<- FALSE
       parsed(new)
       if (inherits(new, "sf")) .data(new)
@@ -835,9 +875,21 @@ server <- function(id) {
         selected <- NULL
         for (feat in featnames) {
           vec <- .data[[feat]]
-          
-          # adopt categorical data with >20 categories only if necessary
-          if (is_valid_for_leaflet(vec) && !(is_categorical(vec) && length(unique(vec)) > 20)) {
+
+          # adopt the following only if necessary:
+          # - Categorical data with less than 2 or more than 20 categories
+          # - Numeric data with only 1 unique value
+          # 
+          # They look bad on maps but can technically be plotted.
+          # This sets them to TRUE but does not stop the loop. If any other
+          # attribute is better suited, this is overwritten
+          is_cat <- is_categorical(vec)
+          too_few <- length(unique(vec)) < 2
+          too_many <- length(unique(vec)) > 20
+          if (is_valid_for_leaflet(vec) &&
+              !(is_cat && too_many) &&
+              !too_few
+             ) {
             selected <- feat
             break
 
@@ -846,18 +898,17 @@ server <- function(id) {
             selected <- feat
           }
         }
-        
+
         choices <- shinyWidgets$prepare_choices(
           data.frame(value = featnames, classNames = "code-input"),
           label = value,
           value = value,
           classNames = classNames
-          
         )
         shinyWidgets$updateVirtualSelect(
           "showcase_col",
           choices = choices,
-          selected = featnames[[1]]
+          selected = selected
         )
 
         shinyjs$show("showcase_col_container", anim = TRUE)
@@ -956,7 +1007,7 @@ server <- function(id) {
               style = "display: flex; align-items: center; gap: 8px;",
               bsicons::bs_icon("diagram-3"),
               sprintf(
-                "%s feature%s",
+                "%s attribute%s",
                 details$variables,
                 ifelse(details$variables == 1, "", "s")
               )
@@ -1159,9 +1210,49 @@ server <- function(id) {
         }
       )
       
+      shinyjs::enable("export")
+      
       out
     }) |>
       bindEvent(input$do_link)
+    
+    
+    # Export ----
+    output$export <- downloadHandler(
+      filename = function() {
+        paste0("gxc-linked-", Sys.Date(), ".", input$output_format)
+      },
+      
+      content = function(file) {
+        execute_safely(
+          switch(
+            input$output_format,
+            csv = utils::write.csv(
+              sf::st_drop_geometry(linked()),
+              file = file,
+              row.names = FALSE
+            ),
+            qs = qs2::qs_save(linked(), file),
+            rds = saveRDS(linked(), file),
+            dta = {
+              linked <- linked()
+              names(linked) <- gsub("\\.", "", names(linked))
+              haven::write_dta(
+                sf::st_drop_geometry(linked),
+                path = file,
+                version = input$output_stataVersion
+              )
+            },
+            sav = {
+              linked <- linked()
+              names(linked) <- gsub("\\.", "", names(linked))
+              haven::write_sav(sf::st_drop_geometry(linked), path = file)
+            },
+            sf::write_sf(linked(), dsn = file)
+          )
+        )
+      }
+    )
     
     
     # Render base map ----
