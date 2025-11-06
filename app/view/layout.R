@@ -273,6 +273,103 @@ ui <- function(id) {
             div(
               id = ns("non_gis_file_container"),
               
+              #### Spatial identifiers ----
+              widgets$helpful(
+                shinyWidgets::virtualSelectInput(
+                  ns("areal_id"),
+                  choices = list(),
+                  multiple = FALSE,
+                  label = NULL
+                ),
+                label = "Which columns contain territorial codes?",
+                tip = widgets$tip(HTML(paste0(
+                  "It seems you have loaded a <b>non-spatial file</b>, i.e.,
+                  a file that does not directly define geometries like CSV,
+                  Stata or SPSS files. While these files can carry
+                  geo-information in the form of points or territorial codes,
+                  you need to <b>explicitly specifiy</b> which columns
+                  represent the spatial references of the records.
+                  <br><br>
+                  Please select the column that contains the territorial
+                  codes of each record. EarthLinks will try to detect the
+                  type of code and link with the geometries automatically.
+                  You can also click on ", bsicons::bs_icon("gear"),
+                  " to state the code scheme (e.g., NUTS, INSPIRE, FIPS,
+                  country codes, etc.).
+                  <br><br>
+                  If your data contains coordinates, please specify them
+                  in the drop-down menu below."
+                ))),
+                
+                config = widgets$config(
+                  div(
+                    shinyWidgets$virtualSelectInput(
+                      ns("geolink_geolinker"),
+                      choices = list(
+                        "Guess" = "guess",
+                        "Country codes" = "country codes",
+                        "GADM" = "gadm",
+                        "EU NUTS" = "nuts",
+                        "INSPIRE" = "inspire",
+                        "EU LAU" = "lau",
+                        "German AGS" = "ags",
+                        "US FIPS" = "fips",
+                        "Postal codes" = "postcode"
+                      ),
+                      multiple = FALSE,
+                      label = "What type of territorial code?"
+                    ),
+                    
+                    shinyWidgets$virtualSelectInput(
+                      ns("geolink_iso3_scheme"),
+                      choices = list(
+                        "Guess" = "guess",
+                        "ISO-2" = "iso3c",
+                        "ISO-3" = "iso3c",
+                        "GENC-2" = "genc2c",
+                        "GENC-3" = "genc3c",
+                        "Top-level domain" = "cctld",
+                        "Country name (English)" = "country.name.en",
+                        "Country name (German)" = "country.name.de",
+                        "Country name (French)" = "country.name.fr",
+                        "Country name (Italian)" = "country.name.it",
+                        "Correlates of War" = "cowc",
+                        "European Central Bank" = "ecb",
+                        "Eurostat" = "eurostat",
+                        "FAO" = "fao",
+                        "FIPS 10-4" = "fips",
+                        "Global Administrative Unit Layers (GAUL)" = "gaul",
+                        "Gleditsch & Ward" = "gwc",
+                        "International Olympic Committee" = "ioc",
+                        "United Nations M49" = "un",
+                        "Unicode" = "unicode.symbol",
+                        "UNHCR" = "unhcr",
+                        "UNPD" = "unpd",
+                        "Varieties of Democracy" = "vdem",
+                        "World Bank" = "wb",
+                        "World Values Survey" = "wvs"
+                      ),
+                      label = "In case of country codes, what type of code scheme?",
+                      multiple = FALSE,
+                      search = TRUE,
+                      allowNewOption = TRUE,
+                      searchPlaceholderText = "Add other country code schemes..."
+                    ),
+                    
+                    shinyWidgets$virtualSelectInput(
+                      ns("geolink_iso3_scheme"),
+                      choices = list(
+                        "Natural Earth" = "naturalearth",
+                        "geoBoundaries" = "geoboundaries",
+                        "GADM" = "gadm",
+                        "UNHCR" = "unhcr"
+                      ),
+                      label = "In case of country codes, what type of country database?"
+                    )
+                  )
+                )
+              ),
+              
               #### Coordinates ----
               widgets$helpful(
                 selectizeInput(
@@ -287,13 +384,18 @@ ui <- function(id) {
                 ),
                 label = "Which columns contain coordinates?",
                 tip = widgets$tip(HTML(
-                  "It seems you have loaded a <b>non-spatial file</b>, i.e., .csv,
-                  or a file from SPSS or Stata. While these files can carry
-                  geo-information in the form of points, you need to <b>explicitly
-                  specify</b> which columns represent the coordinates of these points.
+                  "It seems you have loaded a <b>non-spatial file</b>, i.e.,
+                  a file that does not directly define geometries like CSV,
+                  Stata or SPSS files. While these files can carry
+                  geo-information in the form of points or territorial codes,
+                  you need to <b>explicitly specifiy</b> which columns
+                  represent the spatial references of the records.
                   <br><br>
                   Please select the two column names that contain the X and
-                  Y coordinates, respectively (or longitude and latitude)."
+                  Y coordinates, respectively (or longitude and latitude).
+                  <br><br>
+                  If your data contains territorial codes instead of coordinates,
+                  please specify them in the drop-down menu above."
                 ))
               ),
               
