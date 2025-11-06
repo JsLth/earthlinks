@@ -24,4 +24,3 @@ make_sasser <- function() {
   })
 }
 
-sasser <- make_sasser()
