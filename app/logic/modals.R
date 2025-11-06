@@ -121,6 +121,10 @@ cli_to_html <- function(e, ...) {
 # Send info message
 send_info <- function(text,
                       title = "Info",
+                      footer = shiny::modalButton(
+                        "Got it!",
+                        type = "outline-secondary"
+                      ),
                       btn_type = "outline-secondary",
                       btn_label = "Got it!",
                       size = "m",
@@ -130,7 +134,7 @@ send_info <- function(text,
     text,
     title = title,
     size = size,
-    footer = modalButton(btn_label, type = btn_type)
+    footer = footer
   ))
 }
 

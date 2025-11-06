@@ -2,6 +2,7 @@ box::use(
   gxc[...],
   bslib[...],
   bsicons[bs_icon],
+  fontawesome[fa_i],
   htmlwidgets[onRender],
   leaflet,
   sf,
@@ -275,11 +276,26 @@ ui <- function(id) {
               
               #### Spatial identifiers ----
               widgets$helpful(
-                shinyWidgets::virtualSelectInput(
-                  ns("areal_id"),
-                  choices = list(),
-                  multiple = FALSE,
-                  label = NULL
+                div(
+                  style = "display: flex; align-items: stretch; gap: 10px;",
+                  shinyWidgets::virtualSelectInput(
+                    ns("areal_id"),
+                    choices = list(),
+                    multiple = FALSE,
+                    label = NULL
+                  ),
+                  shiny::actionButton(
+                    ns("enrich"),
+                    label = tagList(bs_icon("magic"), "Enrich"),
+                    icon = NULL,
+                    style = css(
+                      height = "36px",
+                      width = "30%",
+                      display = "flex",
+                      `align-items` = "center",
+                      `justify-content` = "center"
+                    )
+                  )
                 ),
                 label = "Which columns contain territorial codes?",
                 tip = widgets$tip(HTML(paste0(
@@ -357,7 +373,7 @@ ui <- function(id) {
                     ),
                     
                     shinyWidgets$virtualSelectInput(
-                      ns("geolink_iso3_scheme"),
+                      ns("geolink_iso3_default"),
                       choices = list(
                         "Natural Earth" = "naturalearth",
                         "geoBoundaries" = "geoboundaries",
@@ -372,16 +388,23 @@ ui <- function(id) {
               
               #### Coordinates ----
               widgets$helpful(
-                selectizeInput(
+                shinyWidgets::virtualSelectInput(
                   ns("non_gis_geometry"),
                   choices = list(),
                   multiple = TRUE,
                   label = NULL,
-                  options = list(
-                    maxItems = 2,
-                    hideSelected = TRUE
-                  )
+                  maxValues = 2
                 ),
+                # selectizeInput(
+                #   ns("non_gis_geometry"),
+                #   choices = list(),
+                #   multiple = TRUE,
+                #   label = NULL,
+                #   options = list(
+                #     maxItems = 2,
+                #     hideSelected = TRUE
+                #   )
+                #),
                 label = "Which columns contain coordinates?",
                 tip = widgets$tip(HTML(
                   "It seems you have loaded a <b>non-spatial file</b>, i.e.,
@@ -827,8 +850,16 @@ server <- function(id) {
           selected <- c("X", "Y")
         }
         
+        freezeReactiveValue(input, "areal_id")
+        shinyWidgets$updateVirtualSelect(
+          session = session,
+          "areal_id",
+          choices = colnames(parsed()),
+          selected = NULL
+        )
+        
         freezeReactiveValue(input, "non_gis_geometry")
-        updateSelectizeInput(
+        shinyWidgets$updateVirtualSelect(
           session = session,
           "non_gis_geometry",
           choices = colnames(parsed()),
@@ -929,6 +960,133 @@ server <- function(id) {
       
       .data(new_sf)
     }), priority = 400)
+    
+    
+    # Non-GIS - confirm enrich ----
+    observe({
+      execute_safely({
+        linker <- input$geolink_geolinker
+        scheme <- input$geolink_iso3_scheme
+        ids <- parsed()[[input$areal_id]]
+        
+        if (!identical(scheme, "guess")) {
+          ids <- countrycode::countrycode(ids, scheme, "iso3c")
+          
+          req_else(
+            !anyNA(ids),
+            toast(
+              sprintf(
+                "The codes in %s do not represent valid %s country codes.
+               Maybe try a different code scheme?",
+                shiny::tags$code(input$areal_id), scheme
+              ),
+              type = "warning"
+            )
+          )
+        }
+        
+        changed <- FALSE
+        if (identical(linker, "country codes")) {
+          ids_old <- ids
+          ids <- geolink:::convert_to_iso3(ids)
+          changed <- length(setdiff(ids, ids_old)) > 0
+          
+          if (!changed) {
+            cc_guess <- countrycode::guess_field(ids, min_similarity = 100)
+            
+            req_else(
+              "iso3c" %in% cc_guess$code,
+              toast(
+                sprintf(
+                  "The codes in %s do not represent valid country codes.
+                 Maybe try selecting a different type of territorial code?",
+                  shiny::tags$code(input$areal_id)
+                ),
+                type = "warning"
+              )
+            )
+          }
+          
+          linker <- input$geolink_iso3_default
+        }
+        
+        if (identical(linker, "guess")) {
+          linker <- tryCatch(
+            geolink:::guess_linker(
+              ids,
+              iso3_auto = TRUE,
+              iso3_default = input$geolink_iso3_default
+            ),
+            error = function(e) {
+              req_else(
+                !grepl("could not automatically", e$message),
+                toast(
+                  sprintf(
+                    "Could not automatically detect the type of territorial code.
+                   Maybe try selecting a code type manually? Otherwise, you
+                   will have to georeference your data yourself.",
+                    shiny::tags$code(input$areal_id)
+                  ),
+                  type = "error"
+                )
+              )
+              
+              stop(e)
+            }
+          )
+        }
+        
+        linker_pretty <- switch(
+          linker,
+          gadm = "GADM boundaries",
+          unhcr = "UNHCR boundaries",
+          nuts = "EU NUTS regions",
+          inspire = "INSPIRE grids",
+          lau = "EU LAU regions",
+          ags = "German AGS regions",
+          fips = "US FIPS regions",
+          postcode = "postal code centroids",
+          "country boundaries"
+        )
+        
+        send_info(
+          title = "Are you sure you want to continue?",
+          text = sprintf(
+            "You are about to link your data with %s. Depending on your
+             data this may take a while and will also overwrite any
+             current geometry. Do you want to continue?",
+            linker_pretty
+          ),
+          footer = tagList(
+            modalButton("Cancel"),
+            actionButton(session$ns("enrich_confirm"), "Continue")
+          )
+        )
+      })
+    }) |>
+      bindEvent(input$enrich)
+    
+    
+    # Non-GIS - enrich ----
+    observe({
+      execute_safely({
+        linker <- if (!input$geolink_geolinker %in% c("guess", "country codes")) {
+          input$geolink_geolinker
+        }
+        
+        linked <- geolink::enrich(
+          parsed(),
+          id_col = input$areal_id,
+          linker = linker,
+          iso3_scheme = input$geolink_iso3_scheme,
+          iso3_default = input$geolink_iso3_default,
+          crs = input$non_gis_crs
+        )
+        
+        .data(linked)
+      })
+    }) |>
+      bindEvent(input$enrich_confirm)
     
     
     # Flat date - show/hide ----

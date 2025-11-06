@@ -177,3 +177,9 @@ key_get0 <- function(service, username = NULL, keyring = NULL) {
     error = function(e) NULL
   )
 }
+
+
+css <- function(...) {
+  args <- list(...)
+  paste(paste(names(args), args, sep = ":"), collapse = ";")
+}
