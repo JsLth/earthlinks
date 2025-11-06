@@ -1,4 +1,5 @@
 box::use(
+  gxc[...],
   bslib[...],
   bsicons[bs_icon],
   htmlwidgets[onRender],
@@ -26,6 +27,7 @@ box::use(
 )
 
 options(cli.progress_handlers = "cli")
+old_maxRequestSize <- options(shiny.maxRequestSize = 5 * 1024 ^ 3)
 
 indicators <- c(
   "2 metre temperature" = "2m_temperature",
@@ -271,6 +273,103 @@ ui <- function(id) {
             div(
               id = ns("non_gis_file_container"),
               
+              #### Spatial identifiers ----
+              widgets$helpful(
+                shinyWidgets::virtualSelectInput(
+                  ns("areal_id"),
+                  choices = list(),
+                  multiple = FALSE,
+                  label = NULL
+                ),
+                label = "Which columns contain territorial codes?",
+                tip = widgets$tip(HTML(paste0(
+                  "It seems you have loaded a <b>non-spatial file</b>, i.e.,
+                  a file that does not directly define geometries like CSV,
+                  Stata or SPSS files. While these files can carry
+                  geo-information in the form of points or territorial codes,
+                  you need to <b>explicitly specifiy</b> which columns
+                  represent the spatial references of the records.
+                  <br><br>
+                  Please select the column that contains the territorial
+                  codes of each record. EarthLinks will try to detect the
+                  type of code and link with the geometries automatically.
+                  You can also click on ", bsicons::bs_icon("gear"),
+                  " to state the code scheme (e.g., NUTS, INSPIRE, FIPS,
+                  country codes, etc.).
+                  <br><br>
+                  If your data contains coordinates, please specify them
+                  in the drop-down menu below."
+                ))),
+                
+                config = widgets$config(
+                  div(
+                    shinyWidgets$virtualSelectInput(
+                      ns("geolink_geolinker"),
+                      choices = list(
+                        "Guess" = "guess",
+                        "Country codes" = "country codes",
+                        "GADM" = "gadm",
+                        "EU NUTS" = "nuts",
+                        "INSPIRE" = "inspire",
+                        "EU LAU" = "lau",
+                        "German AGS" = "ags",
+                        "US FIPS" = "fips",
+                        "Postal codes" = "postcode"
+                      ),
+                      multiple = FALSE,
+                      label = "What type of territorial code?"
+                    ),
+                    
+                    shinyWidgets$virtualSelectInput(
+                      ns("geolink_iso3_scheme"),
+                      choices = list(
+                        "Guess" = "guess",
+                        "ISO-2" = "iso3c",
+                        "ISO-3" = "iso3c",
+                        "GENC-2" = "genc2c",
+                        "GENC-3" = "genc3c",
+                        "Top-level domain" = "cctld",
+                        "Country name (English)" = "country.name.en",
+                        "Country name (German)" = "country.name.de",
+                        "Country name (French)" = "country.name.fr",
+                        "Country name (Italian)" = "country.name.it",
+                        "Correlates of War" = "cowc",
+                        "European Central Bank" = "ecb",
+                        "Eurostat" = "eurostat",
+                        "FAO" = "fao",
+                        "FIPS 10-4" = "fips",
+                        "Global Administrative Unit Layers (GAUL)" = "gaul",
+                        "Gleditsch & Ward" = "gwc",
+                        "International Olympic Committee" = "ioc",
+                        "United Nations M49" = "un",
+                        "Unicode" = "unicode.symbol",
+                        "UNHCR" = "unhcr",
+                        "UNPD" = "unpd",
+                        "Varieties of Democracy" = "vdem",
+                        "World Bank" = "wb",
+                        "World Values Survey" = "wvs"
+                      ),
+                      label = "In case of country codes, what type of code scheme?",
+                      multiple = FALSE,
+                      search = TRUE,
+                      allowNewOption = TRUE,
+                      searchPlaceholderText = "Add other country code schemes..."
+                    ),
+                    
+                    shinyWidgets$virtualSelectInput(
+                      ns("geolink_iso3_scheme"),
+                      choices = list(
+                        "Natural Earth" = "naturalearth",
+                        "geoBoundaries" = "geoboundaries",
+                        "GADM" = "gadm",
+                        "UNHCR" = "unhcr"
+                      ),
+                      label = "In case of country codes, what type of country database?"
+                    )
+                  )
+                )
+              ),
+              
               #### Coordinates ----
               widgets$helpful(
                 selectizeInput(
@@ -285,13 +384,18 @@ ui <- function(id) {
                 ),
                 label = "Which columns contain coordinates?",
                 tip = widgets$tip(HTML(
-                  "It seems you have loaded a <b>non-spatial file</b>, i.e., .csv,
-                  or a file from SPSS or Stata. While these files can carry
-                  geo-information in the form of points, you need to <b>explicitly
-                  specify</b> which columns represent the coordinates of these points.
+                  "It seems you have loaded a <b>non-spatial file</b>, i.e.,
+                  a file that does not directly define geometries like CSV,
+                  Stata or SPSS files. While these files can carry
+                  geo-information in the form of points or territorial codes,
+                  you need to <b>explicitly specifiy</b> which columns
+                  represent the spatial references of the records.
                   <br><br>
                   Please select the two column names that contain the X and
-                  Y coordinates, respectively (or longitude and latitude)."
+                  Y coordinates, respectively (or longitude and latitude).
+                  <br><br>
+                  If your data contains territorial codes instead of coordinates,
+                  please specify them in the drop-down menu above."
                 ))
               ),
               
@@ -532,21 +636,60 @@ ui <- function(id) {
 
           br(),
 
-          bslib::input_task_button(
-            ns("do_link"),
-            label = "Download and link",
-            icon = bsicons::bs_icon("lightning-charge-fill"),
-            label_busy = "Linking...",
-            type = "default"
+          widgets$helpful(
+            bslib::input_task_button(
+              ns("do_link"),
+              label = "Link",
+              icon = bsicons::bs_icon("lightning-charge-fill"),
+              label_busy = "Linking...",
+              type = "default"
+            ),
+            label = "Download indicators and link"
+          ),
+          
+          br(),
+          
+          widgets$helpful(
+            shinyjs::disabled(
+              shiny::downloadButton(
+                ns("export"),
+                label = "Export"
+              )
+            ),
+            label = "Export to file",
+            tip = widgets$tip(div(HTML(sprintf(
+              "Click to export your linked data to a file.<br>By default,
+              drops geometries and saves the data as a CSV. You can change
+              this default by clicking on the options icon (%s)",
+              as.character(bsicons::bs_icon("gear")))
+            ))),
+            
+            config = widgets$config(
+              div(
+                shinyWidgets::virtualSelectInput(
+                  ns("output_format"),
+                  label = "Select an output format",
+                  choices = list(
+                    CSV = "csv",
+                    RDS = "rds",
+                    Stata = "dta",
+                    SPSS = "sav",
+                    GeoJSON = "geojson",
+                    GeoPackage = "gpkg",
+                    Shapefile = "shp"
+                  )
+                ),
+                
+                numericInput(
+                  ns("output_stataVersion"),
+                  label = "Stata file version",
+                  value = 14,
+                  min = 8,
+                  max = 15
+                )
+              )
+            )
           )
-        ),
-
-
-        ## Explore ----
-        accordion_panel(
-          title = tags$b("Explore"),
-          value = ns("explore"),
-          lorem::ipsum()
         )
       )
     )
@@ -576,6 +719,7 @@ server <- function(id) {
     onSessionEnded(function() {
       if (!is.null(api_keys$ecmwf)) {
         keyring::key_set_with_value("ecmwfr", "ecmwfr", password = api_keys$ecmwf)
+        options(shiny.maxRequestSize = old_maxRequestSize)
       }
     })
 
@@ -602,6 +746,7 @@ server <- function(id) {
         )
       )
       
+      shinyjs::disable("export")
       example_data_loaded <<- FALSE
       parsed(new)
       if (inherits(new, "sf")) .data(new)
@@ -704,6 +849,10 @@ server <- function(id) {
       x <- parsed[[input$non_gis_geometry[[1]]]]
       y <- parsed[[input$non_gis_geometry[[2]]]]
       
+      if (!is.numeric(x) || !is.numeric(y)) {
+        return()
+      }
+      
       if (all(between(x, -180, 180) & between(y, -90, 90))) {
         selected <- 4326
       } else {
@@ -722,12 +871,47 @@ server <- function(id) {
     
     # Non-GIS - convert ----
     observe(execute_safely({
-      req(length(input$non_gis_geometry) == 2, input$non_gis_crs)
+      req(
+        length(input$non_gis_geometry) == 2,
+        input$non_gis_geometry %in% names(parsed()),
+        input$non_gis_crs
+      )
+      
+      crs <- suppressWarnings(sf::st_crs(as.numeric(input$non_gis_crs)))
+      req_else(!anyNA(crs), toast(
+        "The coordinate reference system (CRS) you provided could not
+          be identified. Please validate your CRS on <a>https://epsg.io/</a>
+          and try again.",
+        title = "CRS could not be identified",
+        type = "danger",
+        delay = 10000
+      ))
+      
+      coord_cols <- unlist(input$non_gis_geometry, use.names = FALSE)
+      req_else(!anyNA(parsed()[, coord_cols]), toast(
+        sprintf(
+          "Some of the values within the columns \"%s\" and \"%s\"
+            contain missing values. Please remove them and load your
+            file again.", coord_cols[1], coord_cols[2]),
+        title = "Missing coordinates detected",
+        type = "danger",
+        delay = 10000
+      ))
+
+      req_else(all(vapply(parsed()[, coord_cols], is.numeric, FALSE)), toast(
+        "The coordinate columns you selected could not be parsed as
+          coordinates. Did you select the correct columns?",
+        title = "Invalid coordinates selected",
+        type = "danger",
+        delay = 10000
+      ))
+      
       new_sf <- sf$st_as_sf(
         parsed(),
-        coords = unlist(input$non_gis_geometry, use.names = FALSE),
-        crs = as.numeric(input$non_gis_crs)
+        coords = coord_cols,
+        crs = crs
       )
+      
       attr(new_sf, "bbox") <- sf$st_bbox(new_sf)
       
       if (is_crs_mismatch(new_sf)) {
@@ -793,9 +977,21 @@ server <- function(id) {
         selected <- NULL
         for (feat in featnames) {
           vec <- .data[[feat]]
-          
-          # adopt categorical data with >20 categories only if necessary
-          if (is_valid_for_leaflet(vec) && !(is_categorical(vec) && length(unique(vec)) > 20)) {
+
+          # adopt the following only if necessary:
+          # - Categorical data with less than 2 or more than 20 categories
+          # - Numeric data with only 1 unique value
+          # 
+          # They look bad on maps but can technically be plotted.
+          # This sets them to TRUE but does not stop the loop. If any other
+          # attribute is better suited, this is overwritten
+          is_cat <- is_categorical(vec)
+          too_few <- length(unique(vec)) < 2
+          too_many <- length(unique(vec)) > 20
+          if (is_valid_for_leaflet(vec) &&
+              !(is_cat && too_many) &&
+              !too_few
+             ) {
             selected <- feat
             break
 
@@ -804,18 +1000,17 @@ server <- function(id) {
             selected <- feat
           }
         }
-        
+
         choices <- shinyWidgets$prepare_choices(
           data.frame(value = featnames, classNames = "code-input"),
           label = value,
           value = value,
           classNames = classNames
-          
         )
         shinyWidgets$updateVirtualSelect(
           "showcase_col",
           choices = choices,
-          selected = featnames[[1]]
+          selected = selected
         )
 
         shinyjs$show("showcase_col_container", anim = TRUE)
@@ -856,14 +1051,18 @@ server <- function(id) {
     
     # Data details - show ----
     observe(execute_safely({
-      req(.data() %||% parsed(), dates())
-      shinyjs$show("data_details_container", anim = TRUE)
+      if (isTruthy(.data() %||% parsed()) && isTruthy(dates())) {
+        shinyjs$show("data_details_container", anim = TRUE)
+      } else {
+        shinyjs$hide("data_details_container", anim = TRUE)
+      }
     }))
     
     
     # Data details - render ----
     output$data_details <- renderUI(execute_safely({
       req(dates())
+
       start <- min(as_date(dates()))
       end <- max(as_date(dates()))
 
@@ -910,7 +1109,7 @@ server <- function(id) {
               style = "display: flex; align-items: center; gap: 8px;",
               bsicons::bs_icon("diagram-3"),
               sprintf(
-                "%s feature%s",
+                "%s attribute%s",
                 details$variables,
                 ifelse(details$variables == 1, "", "s")
               )
@@ -1097,6 +1296,7 @@ server <- function(id) {
           }
         },
         error_fun = function(e) {
+          shiny::printError(e)
           send_error(
             tagList(
               p("The data provider returned the following error message:"),
@@ -1112,9 +1312,49 @@ server <- function(id) {
         }
       )
       
+      shinyjs::enable("export")
+      
       out
     }) |>
       bindEvent(input$do_link)
+    
+    
+    # Export ----
+    output$export <- downloadHandler(
+      filename = function() {
+        paste0("gxc-linked-", Sys.Date(), ".", input$output_format)
+      },
+      
+      content = function(file) {
+        execute_safely(
+          switch(
+            input$output_format,
+            csv = utils::write.csv(
+              sf::st_drop_geometry(linked()),
+              file = file,
+              row.names = FALSE
+            ),
+            qs = qs2::qs_save(linked(), file),
+            rds = saveRDS(linked(), file),
+            dta = {
+              linked <- linked()
+              names(linked) <- gsub("\\.", "", names(linked))
+              haven::write_dta(
+                sf::st_drop_geometry(linked),
+                path = file,
+                version = input$output_stataVersion
+              )
+            },
+            sav = {
+              linked <- linked()
+              names(linked) <- gsub("\\.", "", names(linked))
+              haven::write_sav(sf::st_drop_geometry(linked), path = file)
+            },
+            sf::write_sf(linked(), dsn = file)
+          )
+        )
+      }
+    )
     
     
     # Render base map ----
