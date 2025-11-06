@@ -23,4 +23,3 @@ make_sasser <- function() {
     rhino::build_sass(watch = TRUE)
   })
 }
-
