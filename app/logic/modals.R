@@ -41,15 +41,14 @@ execute_safely <- function(expr,
     "<a href = 'mailto:jonas.lieth@gesis.org'>jonas.lieth@gesis.org</a>)."
   ))
 
-  skip_warn <- FALSE
-  withCallingHandlers(
+  warnings <- list()
+  res <- withCallingHandlers(
     tryCatch(
       shiny::withLogErrors(expr),
       error = function(e) {
         # Stop without error message
         if (inherits(e, "shiny.silent.error")) req(FALSE)
 
-        skip_warn <<- TRUE
         if (is.null(error_fun)) {
           if (!toast) {
             traceback <- shiny::printStackTrace(e) |>
@@ -62,7 +61,7 @@ execute_safely <- function(expr,
               ...,
               br(), br(),
               "Error details:", br(),
-              tags$pre(cli_to_html(e, warn = FALSE), style = "max-height: 20vh"),
+              tags$pre(cli_to_html(e$message, warn = FALSE), style = "max-height: 20vh"),
               tags$details(
                 tags$summary("Traceback"),
                 tags$pre(cli_to_html(traceback, warn = FALSE), style = "max-height: 20vh")
@@ -89,11 +88,22 @@ execute_safely <- function(expr,
     ),
 
     warning = function(w) {
-      if (skip_warn) return()
-      toast(message = w$message, type = "warning", session = session)
+      warnings <- c(warnings, list(w))
+      tryInvokeRestart("muffleWarning")
     }
   )
 
+  # ensure that warnings are only shown if they're not part of an error
+  # this can be annoying because Shiny errors are caught in the console and
+  # emitted as a warning instead, leading to a "double error" where the error
+  # is shown as an error toast AND a warning toast
+  if (!inherits(res, "error") && length(warnings) > 0) {
+    for (w in warnings) {
+      toast(message = conditionMessage(w), type = "warning", session = session)
+    }
+  }
+  
+  res
 }
 
 
@@ -121,7 +131,7 @@ cli_to_html <- function(e, ...) {
 # Send info message
 send_info <- function(text,
                       title = "Info",
-                      footer = shiny::modalButton(
+                      footer = modalButton(
                         "Got it!",
                         type = "outline-secondary"
                       ),
