@@ -1,12 +1,16 @@
 format_duration <- function(x) {
+  if (!length(x)) {
+    return("Unknown duration")
+  }
+  
   x <- as.numeric(x)
-  years <- round(x / 365, 0)
-  months <- round((x %% 365) / 30, 0)
-  days <- max(round((x %% 365) %% 30, 0), 1)
+  years <- trunc(x / 365, 0)
+  months <- trunc((x %% 365) / 30, 0)
+  days <- max(trunc((x %% 365) %% 30, 0), 1)
   year_tail <- if (years != 1) "s" else ""
   month_tail <- if (months != 1) "s" else ""
   day_tail <- if (days != 1) "s" else ""
-  
+
   if (years > 0) {
     sprintf(
       "%s year%s, %s month%s, %s day%s",
@@ -30,7 +34,11 @@ format_duration <- function(x) {
 
 
 format_daterange <- function(x, y) {
-  if (as.numeric(difftime(x, y, units = "days")) <= 1) {
+  if (is.null(x) && is.null(y)) {
+    return("Unknown date/time range")
+  }
+
+  if (abs(as.numeric(difftime(x, y, units = "days"))) <= 1) {
     format(x, format = "%B %d, %Y")
   } else {
     x_fmt <- if (identical(year(x), year(y))) {
