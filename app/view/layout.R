@@ -307,9 +307,10 @@ ui <- function(id) {
                   represent the spatial references of the records.
                   <br><br>
                   Please select the column that contains the territorial
-                  codes of each record. EarthLinks will try to detect the
-                  type of code and link with the geometries automatically.
-                  You can also click on ", bsicons::bs_icon("gear"),
+                  codes of each record, then click \"Enrich\". EarthLinks will
+                  try to detect the type of code and link with the geometries
+                  automatically. You can also click on ",
+                  bsicons::bs_icon("gear"),
                   " to state the code scheme (e.g., NUTS, INSPIRE, FIPS,
                   country codes, etc.).
                   <br><br>
@@ -615,7 +616,7 @@ ui <- function(id) {
           
           ### Indicator ----
           widgets$helpful(
-            selectInput(
+            shinyWidgets$virtualSelectInput(
               ns("indicator"),
               label = NULL,
               choices = unname(invert(indicators)[
@@ -1059,7 +1060,11 @@ server <- function(id) {
           ),
           footer = tagList(
             modalButton("Cancel"),
-            actionButton(session$ns("enrich_confirm"), "Continue")
+            bslib::input_task_button(
+              session$ns("enrich_confirm"),
+              label = "Continue",
+              label_busy = "Linking..."
+            )
           )
         )
       })
@@ -1074,15 +1079,20 @@ server <- function(id) {
           input$geolink_geolinker
         }
         
+        scheme <- if (!input$geolink_iso3_scheme %in% "guess") {
+          input$geolink_iso3_scheme
+        }
+        
         linked <- geolink::enrich(
           parsed(),
           id_col = input$areal_id,
           linker = linker,
-          iso3_scheme = input$geolink_iso3_scheme,
+          iso3_scheme = scheme,
           iso3_default = input$geolink_iso3_default,
-          crs = input$non_gis_crs
+          crs = as.numeric(input$non_gis_crs)
         )
         
+        removeModal()
         .data(linked)
       })
     }) |>
@@ -1108,7 +1118,7 @@ server <- function(id) {
         dates(input$flat_date)
       }
     })) |>
-      bindEvent(.data() %||% parsed())
+      bindEvent(.data() %||% parsed(), input$flat_date)
     
     
     # Showcase - show/hide ----
@@ -1118,7 +1128,6 @@ server <- function(id) {
       
       featnames <- setdiff(names(.data), "geometry")
       featnames <- featnames[vapply(.data[, featnames], is_valid_for_leaflet, logical(1))]
-      
       if (!length(featnames)) {
         toast(
           "The selected dataset contains no valid features (categorical or continuous vectors).
@@ -1127,6 +1136,12 @@ server <- function(id) {
           type = "warning",
           delay = 5000
         )
+        
+        shinyWidgets$updateVirtualSelect(
+          "showcase_col",
+          choices = character()
+        )
+        
         req(FALSE)
       }
       
@@ -1209,7 +1224,7 @@ server <- function(id) {
     
     # Data details - show ----
     observe(execute_safely({
-      if (isTruthy(.data() %||% parsed()) && isTruthy(dates())) {
+      if (isTruthy(.data() %||% parsed())) {
         shinyjs$show("data_details_container", anim = TRUE)
       } else {
         shinyjs$hide("data_details_container", anim = TRUE)
@@ -1219,10 +1234,14 @@ server <- function(id) {
     
     # Data details - render ----
     output$data_details <- renderUI(execute_safely({
-      req(dates())
+      if (isTruthy(dates())) {
+        start <- min(as_date(dates()))
+        end <- max(as_date(dates()))
+      } else {
+        start <- NULL
+        end <- NULL
+      }
 
-      start <- min(as_date(dates()))
-      end <- max(as_date(dates()))
 
       details <- list(
         start = start,
@@ -1310,7 +1329,7 @@ server <- function(id) {
     
     output$explore_data_table <- reactable::renderReactable(execute_safely({
        reactable::reactable(
-         sf$st_drop_geometry(.data()),
+         sf$st_drop_geometry(.data() %||% parsed()),
          striped = TRUE,
          highlight = TRUE,
          bordered = TRUE,
@@ -1371,9 +1390,8 @@ server <- function(id) {
       if (!selected %in% new_choices) {
         selected <- NULL
       }
-
-      updateSelectInput(
-        session,
+      
+      shinyWidgets::updateVirtualSelect(
         "indicator",
         choices = new_choices,
         selected = selected
