@@ -1,25 +1,46 @@
-if (file.exists("renv")) {
-  source("renv/activate.R")
-} else {
-  # The `renv` directory is automatically skipped when deploying with rsconnect.
-  message("No 'renv' directory found; renv won't be activated.")
+# Based on rhino (https://appsilon.github.io/rhino/)
+with_dir <- function(new, code) {
+  old <- setwd(dir = new)
+  on.exit(setwd(old))
+  force(code)
 }
 
-# Allow absolute module imports (relative to the app root).
-options(box.path = getwd())
 
-# box.lsp languageserver external hook
-if (nzchar(system.file(package = "box.lsp"))) {
-  options(
-    languageserver.parser_hooks = list(
-      "box::use" = box.lsp::box_use_parser
-    )
+init <- function(path = ".node") {
+  if (requireNamespace("rhino")) {
+    stop("Package rhino must be installed.")
+  }
+  
+  tryCatch(
+    npm("--version"),
+    error = function(e) stop("Do you have npm installed?")
   )
+  
+  if (dir.exists(path)) {
+    copy_template <- get("copy_template", ns = asNamespace("rhino"))
+    copy_template("node", path)
+  }
+  
+  if (!dir.exists(file.path(path, "node_modules"))) {
+    npm("install", "--no-audit", "--no-fund")
+  }
 }
 
 
-make_sasser <- function() {
-  callr::r_bg(function() {
-    rhino::build_sass(watch = TRUE)
-  })
+npm <- function(..., status_ok = 0) {
+  with_dir(".rhino", status <- system2("npm", args = c(...)))
+  
+  if (status != status_ok) {
+    stop("Command exited with error.")
+  }
+}
+
+
+build_sass <- function() {
+  npm("run", "build-sass")
+}
+
+
+build_js <- function() {
+  npm("run", "build-js")
 }

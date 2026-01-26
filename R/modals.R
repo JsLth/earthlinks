@@ -26,7 +26,7 @@ execute_safely <- function(expr,
     "Something went wrong! If this keeps happening, consider ",
     "opening a <a href='https://github.com/jslth/earthlinks/issues'>Github ",
     "issue</a> or email the tool maintainer (",
-    "<a href = 'mailto:jonas.lieth@gesis.org'>jonas.lieth@gesis.org</a>)."
+    "<a href = 'mailto:stefan.juenger@gesis.org'>stefan.juenger@gesis.org</a>)."
   ))
 
   warnings <- list()
@@ -95,6 +95,37 @@ execute_safely <- function(expr,
 }
 
 
+package_error <- function(pkg,
+                          reason = NULL,
+                          delay = 6000,
+                          cancelOutput = FALSE,
+                          session = getDefaultReactiveDomain()) {
+  msg <- sprintf("Please install the '%s' package", pkg)
+  if (!is.null(reason)) {
+    msg <- paste0(msg, reason)
+  }
+  
+  msg <- paste0(msg, ".")
+  toast(
+    message = msg,
+    title = "Package notice",
+    delay = delay,
+    type = "danger"
+  )
+  
+  req(FALSE, cancelOutput = cancelOutput)
+}
+
+
+with_package <- function(code, pkg, ...) {
+  if (loadable(pkg)) {
+    force(code)
+  } else {
+    package_error(pkg, ...)
+  }
+}
+
+
 with_info <- function(expr, session = getDefaultReactiveDomain()) {
   withCallingHandlers(
     expr,
@@ -111,10 +142,10 @@ with_info <- function(expr, session = getDefaultReactiveDomain()) {
 
 # Convert ANSI formatting of rlang errors to HTML
 cli_to_html <- function(e, ...) {
-  e <- format(e)
+  e <- format(e, ...)
   
   if (loadable("fansi")) {
-    fansi::to_html(e, ...)
+    fansi::to_html(e)
   }
   
   HTML(gsub("\n", "<br>", e))
@@ -133,7 +164,7 @@ send_info <- function(text,
                       size = "m",
                       ...,
                       session = getDefaultReactiveDomain()) {
-  shiny::showModal(shiny::modalDialog(
+  showModal(modalDialog(
     text,
     title = title,
     size = size,
@@ -149,7 +180,7 @@ send_error <- function(text,
                        size = "m",
                        ...,
                        session = getDefaultReactiveDomain()) {
-  shiny::showModal(shiny::modalDialog(
+  showModal(modalDialog(
     text,
     title = title,
     size = size,
@@ -165,7 +196,7 @@ send_warning <- function(text,
                          size = "m",
                          ...,
                          session = getDefaultReactiveDomain()) {
-  shiny::showModal(shiny::modalDialog(
+  showModal(modalDialog(
     text,
     title = title,
     size = size,

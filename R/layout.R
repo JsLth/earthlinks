@@ -1,148 +1,31 @@
-box::use(
-  gxc[...],
-  bslib[...],
-  bsicons[bs_icon],
-  fontawesome[fa_i],
-  htmlwidgets[onRender],
-  leaflet,
-  sf,
-  shinyjs,
-  shiny[...],
-  shinyWidgets,
-  giscoR[gisco_get_nuts],
-  countrycode[countrycode],
-  leaflet.extras2[addSidebyside, removeSidebyside],
-  gargoyle,
-
-)
-
-box::use(
-  app/logic/widgets,
-  app/logic/modals[execute_safely, with_info, send_error, send_info],
-  app/logic/codes[search_param],
-  app/logic/utils[...],
-  app/logic/time_utils[...],
-  app/logic/jsutils[toast, remove_toast, liveCounter, remove_tooltip],
-  app/logic/enum[palettes, units],
-  
-)
-
-options(cli.progress_handlers = "cli")
-old_maxRequestSize <- options(shiny.maxRequestSize = 5 * 1024 ^ 3)
-
-indicators <- c(
-  "2 metre temperature" = "2m_temperature",
-  "Total precipitation" = "total_precipitation",
-  "10 metre U wind component" = "10m_u_component_of_wind",
-  "10 metre V wind component" = "10m_v_component_of_wind",
-  "Leaf area index, high vegetation" = "leaf_area_index_high_vegetation",
-  "Leaf area index, low vegetation" = "leaf_area_index_low_vegetation",
-  "Snowfall" = "snowfall",
-  "Total cloud cover" = "total_cloud_cover",
-  "10 metre wind speed" = "10m_wind_speed"
-)
-
-
-theme <- bs_theme(
-  primary = "#d20064",
-  secondary = "#1E8CC8",
-  success = "#198754",
-  info = "#0dcaf0",
-  warning = "#ffc107",
-  danger = "#dc3545",
-  base_font = "Source Sans Pro"
-) |>
-  # modal theming that aligns more closely with BS5 docs
-  bs_add_rules("
-    /* make toast background opaque */
-    .toast {
-      --bs-toast-header-bg: rgba(var(--bs-body-bg-rgb), 1) !important;
-      --bs-toast-bg: rgba(var(--bs-body-bg-rgb), 1) !important;
-    }
-    
-    /* enforce denser modal styling */
-    .modal-footer, .modal-body {
-      padding: calc((var(--bs-modal-padding) - var(--bs-modal-footer-gap) * .5)) !important
-    }
-    
-    .modal-content {
-      border-width: var(--bs-modal-border-width, 1px);
-      border-color: var(--bs-modal-border-color, rgba(0, 0, 0, 0.2));
-      border-radius: var(--bs-modal-border-radius, 0.3rem);
-    }
-    
-    .modal {
-      --bs-modal-header-border-width: 1px;
-      --bs-modal-header-border-color: #dee2e6;
-      --bs-modal-header-padding: 0.5rem 1rem;
-      --bs-modal-inner-border-radius: calc(0.3rem - 1px);
-      --bs-modal-border-width: 1px;
-      --bs-modal-border-color: rgba(0, 0, 0, 0.2);
-      --bs-modal-border-radius: 0.3rem;
-      --bs-modal-width: 700px !important;
-    }
-
-    /* remove button borders */
-    .accordion {
-      --bs-accordion-btn-focus-box-shadow: rgba(0, 0, 0, 0);
-    }
-
-    .btn {
-      --bs-btn-box-shadow: rgba(0, 0, 0, 0);
-      --bs-btn-focus-box-shadow: rgba(0, 0, 0, 0);
-    }
-
-    .btn-close {
-      --bs-btn-close-focus-shadow: rgba(0, 0, 0, 0)
-    }
-    
-    .vscomp-toggle-button {
-      border: var(--bs-border-width) solid #8D959E !important;
-      border-radius: var(--bs-border-radius);
-      background-color: var(--bs-body-bg) !important;
-      transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
-      background-clip: padding-box;
-      color: var(--bs-body-color) ;
-      line-height: 1.5;
-      font-weight: 400;
-    }
-    
-    .vscomp-wrapper:focus .vscomp-toggle-button {
-      color: var(--bs-body-color);
-      background-color: var(--bs-body-bg) !important;
-      border-color: #e980b2 !important;
-      outline: 0;
-      box-shadow: 0 0 0 .25rem rgba(210, 0, 100, 0.25) !important;
-    }
-  ")
-
-
-ui <- function(id) {
+layout_ui <- function(id) {
   ns <- NS(id)
 
-  page_navbar(
+  bslib::page_navbar(
     id = ns("navbar"),
     title = span(
       id = ns("brand"),
-      tags$img(src = "static/logo.png", id = ns("logo")),
+      tags$img(src = "www/logo.png", id = ns("logo")),
       span("EarthLinks", id = ns("title")),
     ),
     window_title = "EarthLinks",
-    collapsible = FALSE,
     lang = "en",
-    theme = theme,
+    navbar_options = bslib::navbar_options(
+      collapsible = FALSE
+    ),
+    theme = earthlinks_theme(),
     
     # Navbar ----
-    nav_panel_hidden(
+    bslib::nav_panel_hidden(
       id = ns("nav-panel-main"),
       "Link",
-      leaflet$leafletOutput(ns("map"), height = "100%")
+      leaflet::leafletOutput(ns("map"), height = "100%")
     ),
-    nav_spacer(),
-    nav_item(
+    bslib::nav_spacer(),
+    bslib::nav_item(
       a(
         href = "https://github.com/denabel/gxc",
-        tooltip(
+        bslib::tooltip(
           icon("box", class = c("icon", "icon-hover"), id = ns("pkg")),
           "R package",
           placement = "left",
@@ -150,10 +33,10 @@ ui <- function(id) {
         )
       )
     ),
-    nav_item(
+    bslib::nav_item(
       a(
         href = "https://denabel.github.io/gxc_pages/",
-        tooltip(
+        bslib::tooltip(
           icon("book", class = c("icon", "icon-hover"), id = ns("cmp")),
           "Online compendium",
           placement = "left",
@@ -161,11 +44,11 @@ ui <- function(id) {
         )
       )
     ),
-    nav_item(
+    bslib::nav_item(
       a(
         href = "https://gesis.org/en/",
-        tooltip(
-          img(src = "static/gesis-nobg.png", class = c("icon", "icon-hover")),
+        bslib::tooltip(
+          img(src = "www/gesis-nobg.png", class = c("icon", "icon-hover")),
           "GESIS homepage",
           placement = "left",
           options = list(offset = c(0, 13))
@@ -174,43 +57,43 @@ ui <- function(id) {
     ),
     
     # Sidebar ----
-    sidebar = sidebar(
+    sidebar = bslib::sidebar(
       id = ns("sidebar"),
       open = "desktop",
       width = "25vw",
 
-      accordion(
+      bslib::accordion(
         id = ns("accordion"),
         open = c(ns("intro"), ns("input")),
         multiple = TRUE,
 
         ## What is EarthLinks? ----
-        accordion_panel(
+        bslib::accordion_panel(
           title = tags$b("What is EarthLinks?"),
           value = ns("intro"),
           p(
             "This tool is designed to help you access earth observation data and link it to any social science
             (survey) dataset in an intuitive, interactive way. Simply",
-            widgets$no(1), "load a dataset,",
-            widgets$no(2), "select an earth observation indicator,",
-            widgets$no(3), "link the two datasets, and",
-            widgets$no(4), "explore and download the linked data."
+            no(1), "load a dataset,",
+            no(2), "select an earth observation indicator,",
+            no(3), "link the two datasets, and",
+            no(4), "explore and download the linked data."
           )
         ),
 
         ## Input data ----
-        accordion_panel(
+        bslib::accordion_panel(
           title = tags$b("Input data"),
           value = ns("input"),
           
           ### File input ----
-          widgets$helpful(
+          helpful(
             fileInput(
               ns("file"),
               label = NULL
             ),
             label = "Upload a GIS file",
-            tip = widgets$tip(HTML(paste(
+            tip = tip(HTML(paste(
               "You can browse your local or drag-and-drop a file that contains",
               "the spatial units that you want to link with. These spatial units",
               "can either be points or polygons. Please note that the data must be",
@@ -222,7 +105,7 @@ ui <- function(id) {
                 <li><b>Geospatial files:</b> shp, geojson, gpkg, and others
               </ul>"
             ))),
-            config = widgets$config(
+            config = config(
               div(
                 div(
                   class = "code-input",
@@ -242,14 +125,14 @@ ui <- function(id) {
                 selectInput(
                   ns("driver"),
                   label = "What driver to use for reading?",
-                  choices = c("Guess the driver", sf$st_drivers()$name)
+                  choices = c("Guess the driver", sf::st_drivers()$name)
                 )
               )
             )
           ),
           
           ### Example data ----
-          widgets$helpful(
+          helpful(
             actionButton(
               ns("example_data"),
               label = tagList(
@@ -258,7 +141,7 @@ ui <- function(id) {
               )
             ),
             label = "Just want to look around?",
-            tip = widgets$tip(HTML(
+            tip = tip(HTML(
               "By clicking on this button, you will load pre-processed
               example data from the <a href='https://www.europeansocialsurvey.org/'>
               European Social Survey</a> (ESS) that you can use to try out
@@ -270,12 +153,12 @@ ui <- function(id) {
           hr(style = "margin-top: 0rem; margin-bottom: 1rem;"),
           
           ### Non-GIS file specs ----
-          shinyjs$hidden(
+          shinyjs::hidden(
             div(
               id = ns("non_gis_file_container"),
               
               #### Spatial identifiers ----
-              widgets$helpful(
+              helpful(
                 div(
                   style = "display: flex; align-items: stretch; gap: 10px;",
                   shinyWidgets::virtualSelectInput(
@@ -286,7 +169,7 @@ ui <- function(id) {
                   ),
                   shiny::actionButton(
                     ns("enrich"),
-                    label = tagList(bs_icon("magic"), "Enrich"),
+                    label = tagList(bsicons::bs_icon("magic"), "Enrich"),
                     icon = NULL,
                     style = css(
                       height = "36px",
@@ -298,7 +181,7 @@ ui <- function(id) {
                   )
                 ),
                 label = "Which columns contain territorial codes?",
-                tip = widgets$tip(HTML(paste0(
+                tip = tip(HTML(paste0(
                   "It seems you have loaded a <b>non-spatial file</b>, i.e.,
                   a file that does not directly define geometries like CSV,
                   Stata or SPSS files. While these files can carry
@@ -318,9 +201,9 @@ ui <- function(id) {
                   in the drop-down menu below."
                 ))),
                 
-                config = widgets$config(
+                config = config(
                   div(
-                    shinyWidgets$virtualSelectInput(
+                    shinyWidgets::virtualSelectInput(
                       ns("geolink_geolinker"),
                       choices = list(
                         "Guess" = "guess",
@@ -337,7 +220,7 @@ ui <- function(id) {
                       label = "What type of territorial code?"
                     ),
                     
-                    shinyWidgets$virtualSelectInput(
+                    shinyWidgets::virtualSelectInput(
                       ns("geolink_iso3_scheme"),
                       choices = list(
                         "Guess" = "guess",
@@ -373,7 +256,7 @@ ui <- function(id) {
                       searchPlaceholderText = "Add other country code schemes..."
                     ),
                     
-                    shinyWidgets$virtualSelectInput(
+                    shinyWidgets::virtualSelectInput(
                       ns("geolink_iso3_default"),
                       choices = list(
                         "Natural Earth" = "naturalearth",
@@ -388,7 +271,7 @@ ui <- function(id) {
               ),
               
               #### Coordinates ----
-              widgets$helpful(
+              helpful(
                 shinyWidgets::virtualSelectInput(
                   ns("non_gis_geometry"),
                   choices = list(),
@@ -396,18 +279,8 @@ ui <- function(id) {
                   label = NULL,
                   maxValues = 2
                 ),
-                # selectizeInput(
-                #   ns("non_gis_geometry"),
-                #   choices = list(),
-                #   multiple = TRUE,
-                #   label = NULL,
-                #   options = list(
-                #     maxItems = 2,
-                #     hideSelected = TRUE
-                #   )
-                #),
                 label = "Which columns contain coordinates?",
-                tip = widgets$tip(HTML(
+                tip = tip(HTML(
                   "It seems you have loaded a <b>non-spatial file</b>, i.e.,
                   a file that does not directly define geometries like CSV,
                   Stata or SPSS files. While these files can carry
@@ -424,8 +297,8 @@ ui <- function(id) {
               ),
               
               #### CRS ----
-              widgets$helpful(
-                shinyWidgets$virtualSelectInput(
+              helpful(
+                shinyWidgets::virtualSelectInput(
                   ns("non_gis_crs"),
                   choices = list(
                     "WGS84 (4326)" = "4326",
@@ -440,7 +313,7 @@ ui <- function(id) {
                   searchPlaceholderText = "Add other EPSG codes..."
                 ),
                 label = "Select a reference system (CRS)",
-                tip = widgets$tip(HTML("
+                tip = tip(HTML("
                   A <a href='https://denabel.github.io/gxc_pages/crs.html#transformations-conversions'>
                   Coordinate Reference System (CRS)</a> is a set of rules
                   and measurements that tells you exactly where something is
@@ -459,10 +332,10 @@ ui <- function(id) {
           ),
           
           ### Flat date ----
-          shinyjs$hidden(
-            widgets$helpful(
+          shinyjs::hidden(
+            helpful(
               id = ns("flat_date_container"),
-              shinyWidgets$airDatepickerInput(
+              shinyWidgets::airDatepickerInput(
                 ns("flat_date"),
                 label = NULL,
                 range = TRUE,
@@ -471,7 +344,7 @@ ui <- function(id) {
                 update_on = "close"
               ),
               label = "Select a time frame that describes your data",
-              tip = widgets$tip(tagList(
+              tip = tip(tagList(
                 p(
                   "The dataset you have loaded does not contain a date vector
                   in your specified date field. You can choose to either:"
@@ -485,10 +358,10 @@ ui <- function(id) {
           ),
           
           ### Showcase column ----
-          shinyjs$hidden(
-            widgets$helpful(
+          shinyjs::hidden(
+            helpful(
               id = ns("showcase_col_container"),
-              shinyWidgets$virtualSelectInput(
+              shinyWidgets::virtualSelectInput(
                 ns("showcase_col"),
                 label = NULL,
                 choices = list(),
@@ -499,13 +372,13 @@ ui <- function(id) {
                 additionalToggleButtonClasses = "code-input"
               ),
               label = "Which column do you want to show on the map?",
-              tip = widgets$tip(HTML(
+              tip = tip(HTML(
                 "Your selected dataset contains multiple features but only
                   one of them can be displayed on the map. This step lets
                   you select a column from your dataset to display on the map
                   alongside your linked earth observation data."
               )),
-              config = widgets$config(
+              config = config(
                 div(
                   div(
                     textInput(
@@ -521,11 +394,11 @@ ui <- function(id) {
                       placeholder = "e.g., euro per capita"
                     )
                   ),
-                  shinyWidgets$virtualSelectInput(
+                  shinyWidgets::virtualSelectInput(
                     ns("showcase_palette"),
                     label = "What color palette should the feature be shown in?",
-                    choices = shinyWidgets$prepare_choices(
-                      palettes,
+                    choices = shinyWidgets::prepare_choices(
+                      palettes(),
                       label = palette,
                       value = palette,
                       group_by = type
@@ -541,12 +414,12 @@ ui <- function(id) {
           ),
           
           ### Data details ----
-          shinyjs$hidden(
-            card(
+          shinyjs::hidden(
+            bslib::card(
               max_height = 250,
               id = ns("data_details_container"),
               style = "margin-top: 20px;",
-              card_header(
+              bslib::card_header(
                 span(bsicons::bs_icon("bar-chart-fill"), "Dataset details")
               ),
               uiOutput(ns("data_details"))
@@ -555,33 +428,41 @@ ui <- function(id) {
         ),
         
         ## Indicator selection ----
-        accordion_panel(
+        bslib::accordion_panel(
           title = tags$b("Indicator selection"),
           value = ns("indicator_select"),
           
-          # widgets$helpful(
-          #   pickerInput(
-          #     ns("data_provider"),
-          #     choices = list(
-          #       "Copernicus" = "ecmwfr"
-          #     )
-          #   ),
-          #   label = tags$b("Select a data provider"),
-          #   tip = widgets$tip("Test")
-          # )
+          ### Indicator ----
+          helpful(
+            shinyWidgets::virtualSelectInput(
+              ns("indicator"),
+              label = NULL,
+              choices = names(indicators)
+            ),
+            label = "Select an indicator",
+            tip = tip(div(HTML(
+              "Select the earth observation indicator you want to link. The
+              available indicators you can select depend on the choices in
+              data provider, data catalogue and other options above.<br>
+              <i>Note:</i> Some indicators are averaged over time (e.g.,
+              temperature), while others are summed (e.g., precipitation),
+              depending on their nature and the selected time aggregation
+              level."
+            )))
+          ),
+          
+          uiOutput(ns("indicator_desc")),
           
           ### Time level ----
-          widgets$helpful(
+          helpful(
+            id = ns("time_level_container"),
             radioButtons(
               ns("time_level"),
               label = NULL,
-              choices = list(
-                "Daily" = "daily",
-                "Monthly" = "monthly"
-              )
+              choices = time_levels
             ),
             label = "Select a time aggregation level",
-            tip = widgets$tip(
+            tip = tip(
               div(
                 "This option lets you choose how the climate statistics are
                 grouped over time",
@@ -601,10 +482,11 @@ ui <- function(id) {
           ),
           
           ### ERA-Land ----
-          widgets$helpful(
+          helpful(
+            id = ns("land_container"),
             checkboxInput(ns("land"), label = NULL, value = TRUE, width = "auto"),
             label = "Only include land areas?",
-            tip = widgets$tip(div(HTML(
+            tip = tip(div(HTML(
               "Tick this box to use land-only data. When selected, the data
               comes from ERA5-Land, which provides higher-resolution climate
               information from <b>land surfaces only</b>. Otherwise, the data
@@ -612,45 +494,22 @@ ui <- function(id) {
               ERA5 dataset."
             ))),
             inline = TRUE
-          ),
-          
-          ### Indicator ----
-          widgets$helpful(
-            shinyWidgets$virtualSelectInput(
-              ns("indicator"),
-              label = NULL,
-              choices = unname(invert(indicators)[
-                gxc:::allowed_indicators_by_catalogue$`derived-era5-land-daily-statistics`
-              ])
-            ),
-            label = "Select an indicator",
-            tip = widgets$tip(div(HTML(
-              "Select the earth observation indicator you want to link. The
-              available indicators you can select depend on the choices in
-              data provider, data catalogue and other options above.<br>
-              <i>Note:</i> Some indicators are averaged over time (e.g.,
-              temperature), while others are summed (e.g., precipitation),
-              depending on their nature and the selected time aggregation
-              level."
-            )))
-          ),
-          
-          uiOutput(ns("indicator_desc"))
+          )
         ),
         
         ## Finalize ----
-        accordion_panel(
+        bslib::accordion_panel(
           title = tags$b("Finalize"),
           value = ns("finalize"),
 
-          widgets$helpful(
-            widgets$passwordInputToggle(
+          helpful(
+            passwordInputToggle(
               ns("api_key"),
               label = NULL,
               placeholder = "API key"
             ),
             label = "Enter your API key",
-            tip = widgets$tip(div(HTML(
+            tip = tip(div(HTML(
               "To access earth observation data, EarthLinks needs to communicate with various
               <a href='https://en.wikipedia.org/wiki/API'>APIs</a> (application programming interfaces).
               To proceed, please register with ECMWF (<a href='https://www.ecmwf.int/'>Link</a>) and
@@ -660,7 +519,7 @@ ui <- function(id) {
 
           br(),
 
-          widgets$helpful(
+          helpful(
             bslib::input_task_button(
               ns("do_link"),
               label = "Link",
@@ -673,7 +532,7 @@ ui <- function(id) {
           
           br(),
           
-          widgets$helpful(
+          helpful(
             shinyjs::disabled(
               shiny::downloadButton(
                 ns("export"),
@@ -681,14 +540,14 @@ ui <- function(id) {
               )
             ),
             label = "Export to file",
-            tip = widgets$tip(div(HTML(sprintf(
+            tip = tip(div(HTML(sprintf(
               "Click to export your linked data to a file.<br>By default,
               drops geometries and saves the data as a CSV. You can change
               this default by clicking on the options icon (%s)",
               as.character(bsicons::bs_icon("gear")))
             ))),
             
-            config = widgets$config(
+            config = config(
               div(
                 shinyWidgets::virtualSelectInput(
                   ns("output_format"),
@@ -721,14 +580,27 @@ ui <- function(id) {
 }
 
 
-server <- function(id) {
-  moduleServer(id, function(input, output, session) {   
-    toast(
-      "Thanks for using EarthLinks!",
-      title = "App successfully started",
-      type = "success",
-      delay = 6000
-    )
+layout_server <- function(id) {
+  moduleServer(id, function(input, output, session) {
+    if (!loadable("haven")) {
+      toast(
+        "To load or save files from SPSS or Stata, you need to install the
+        'haven' package.",
+        title = "Package notice",
+        type = "warning",
+        delay = 6000
+      )
+    }
+    
+    if (!loadable("qs2")) {
+      toast(
+        "To load or save files from SPSS or Stata, you need to install the
+        'qs2' package.",
+        title = "Package notice",
+        type = "warning",
+        delay = 6000
+      )
+    }
     
     parsed <- reactiveVal(NULL) # parsed file object, yet to be cleaned
     .data <- reactiveVal(NULL) # data ready to be linked
@@ -743,7 +615,7 @@ server <- function(id) {
     onSessionEnded(function() {
       if (!is.null(api_keys$ecmwf)) {
         keyring::key_set_with_value("ecmwfr", "ecmwfr", password = api_keys$ecmwf)
-        options(shiny.maxRequestSize = old_maxRequestSize)
+        options_restore()
       }
     })
 
@@ -752,17 +624,41 @@ server <- function(id) {
     observe(execute_safely({
       path <- input$file$datapath
 
+      haven_msg <- "To read files from Stata or SPSS, please ensure that
+        the 'haven' package is installed."
       ext <- tools::file_ext(path)
       new <- switch(
         ext,
         rds = readRDS(path),
-        qs = qs2::qs_read(path),
-        csv = readr::read_delim(path, show_col_types = FALSE),
-        sav = haven::read_sav(path),
-        por = haven::read_por(path),
-        dta = haven::read_dta(path),
+        qs = with_package(
+          qs2::qs_read(path),
+          "haven",
+          "to load .qs files"
+        ),
+        csv = {
+          if (loadable("readr")) {
+            readr::read_delim(path, show_col_types = FALSE)
+          } else {
+            read.csv(path)
+          }
+        },
+        sav = with_package(
+          haven::read_sav(path),
+          "haven",
+          "to load .sav files"
+        ),
+        por = with_package(
+          haven::read_por(path),
+          "haven",
+          "to load .por files"
+        ),
+        dta = with_package(
+          haven::read_dta(path),
+          "haven",
+          "to load .dta files"
+        ),
         execute_safely(
-          sf$read_sf(path),
+          sf::read_sf(path),
           toast = TRUE,
           message = HTML(sprintf("Failed to read the provided file. Make sure to load
             a supported file that contains geo-information. Click on %s
@@ -784,24 +680,24 @@ server <- function(id) {
       new$inwde <- as.POSIXct(new$inwde, format = "%Y-%m-%d %H:%M:%S")
       new <- stats::aggregate(cbind(inwde, wrclmch) ~ cntry, new, mean, na.rm = TRUE)
       countries <- unique(new$cntry)
-      geom <- gisco_get_nuts(
+      geom <- giscoR::gisco_get_nuts(
         year = "2024",
         resolution = "60",
         spatialtype = "RG",
         nuts_level = "0",
-        country = countrycode(countries, origin = "iso2c", destination = "iso3c")
+        country = countrycode::countrycode(countries, origin = "iso2c", destination = "iso3c")
       )["geo"]
       new <- merge(new, geom, by.x = "cntry", by.y = "geo")
-      new <- sf$st_as_sf(new)
-      new <- sf$st_transform(new, 4326)
-      new <- suppressWarnings(sf$st_intersection(
+      new <- sf::st_as_sf(new)
+      new <- sf::st_transform(new, 4326)
+      new <- suppressWarnings(sf::st_intersection(
         new,
-        sf$st_as_sfc(sf$st_bbox(c(
+        sf::st_as_sfc(sf::st_bbox(c(
           xmin = -25,
           ymin = 30,
           xmax = 40,
           ymax = 70
-        ), crs = sf$st_crs(4326)))
+        ), crs = sf::st_crs(4326)))
       ))
       names(new) <- c("country", "date", "climate_concern", "geometry")
       new$date <- as.Date(as.POSIXct(new$date))
@@ -852,7 +748,7 @@ server <- function(id) {
         }
         
         freezeReactiveValue(input, "areal_id")
-        shinyWidgets$updateVirtualSelect(
+        shinyWidgets::updateVirtualSelect(
           session = session,
           "areal_id",
           choices = colnames(parsed()),
@@ -860,7 +756,7 @@ server <- function(id) {
         )
         
         freezeReactiveValue(input, "non_gis_geometry")
-        shinyWidgets$updateVirtualSelect(
+        shinyWidgets::updateVirtualSelect(
           session = session,
           "non_gis_geometry",
           choices = colnames(parsed()),
@@ -869,7 +765,7 @@ server <- function(id) {
         
         
       } else {
-        shinyjs$hide("non_gis_file_container", anim = TRUE)
+        shinyjs::hide("non_gis_file_container", anim = TRUE)
       }
     })) |>
       bindEvent(parsed())
@@ -938,13 +834,13 @@ server <- function(id) {
         delay = 10000
       ))
       
-      new_sf <- sf$st_as_sf(
+      new_sf <- sf::st_as_sf(
         parsed(),
         coords = coord_cols,
         crs = crs
       )
       
-      attr(new_sf, "bbox") <- sf$st_bbox(new_sf)
+      attr(new_sf, "bbox") <- sf::st_bbox(new_sf)
       
       if (is_crs_mismatch(new_sf)) {
         toast(
@@ -979,7 +875,7 @@ server <- function(id) {
               sprintf(
                 "The codes in %s do not represent valid %s country codes.
                Maybe try a different code scheme?",
-                shiny::tags$code(input$areal_id), scheme
+                tags$code(input$areal_id), scheme
               ),
               type = "warning"
             )
@@ -1026,7 +922,7 @@ server <- function(id) {
                     "Could not automatically detect the type of territorial code.
                    Maybe try selecting a code type manually? Otherwise, you
                    will have to georeference your data yourself.",
-                    shiny::tags$code(input$areal_id)
+                    tags$code(input$areal_id)
                   ),
                   type = "error"
                 )
@@ -1102,9 +998,9 @@ server <- function(id) {
     # Flat date - show/hide ----
     observe(execute_safely({
       if (!input$date_column %in% names(parsed()) && !example_data_loaded) {
-        shinyjs$show("flat_date_container", anim = TRUE)
+        shinyjs::show("flat_date_container", anim = TRUE)
       } else {
-        shinyjs$hide("flat_date_container", anim = TRUE)
+        shinyjs::hide("flat_date_container", anim = TRUE)
       }
     })) |>
       bindEvent(parsed())
@@ -1137,7 +1033,7 @@ server <- function(id) {
           delay = 5000
         )
         
-        shinyWidgets$updateVirtualSelect(
+        shinyWidgets::updateVirtualSelect(
           "showcase_col",
           choices = character()
         )
@@ -1174,26 +1070,26 @@ server <- function(id) {
           }
         }
 
-        choices <- shinyWidgets$prepare_choices(
+        choices <- shinyWidgets::prepare_choices(
           data.frame(value = featnames, classNames = "code-input"),
           label = value,
           value = value,
           classNames = classNames
         )
-        shinyWidgets$updateVirtualSelect(
+        shinyWidgets::updateVirtualSelect(
           "showcase_col",
           choices = choices,
           selected = selected
         )
 
-        shinyjs$show("showcase_col_container", anim = TRUE)
+        shinyjs::show("showcase_col_container", anim = TRUE)
       } else {
-        shinyWidgets$updateVirtualSelect(
+        shinyWidgets::updateVirtualSelect(
           "showcase_col",
           choices = list(featnames),
           selected = featnames[[1]]
         )
-        shinyjs$hide("showcase_col_container", anim = TRUE)
+        shinyjs::hide("showcase_col_container", anim = TRUE)
       }
     }))
     
@@ -1203,17 +1099,17 @@ server <- function(id) {
       showcase <- .data()[[input$showcase_col]]
       freezeReactiveValue(input, "showcase_palette")
       if (is_categorical(showcase)) {
-        shinyWidgets$updateVirtualSelect(
+        shinyWidgets::updateVirtualSelect(
           "showcase_palette",
           selected = "Dark 3"
         )
       } else if (is_diverging(showcase)) {
-        shinyWidgets$updateVirtualSelect(
+        shinyWidgets::updateVirtualSelect(
           "showcase_palette",
           selected = "Blue-Red"
         )
       } else {
-        shinyWidgets$updateVirtualSelect(
+        shinyWidgets::updateVirtualSelect(
           "showcase_palette",
           selected = "Viridis"
         )
@@ -1225,9 +1121,9 @@ server <- function(id) {
     # Data details - show ----
     observe(execute_safely({
       if (isTruthy(.data() %||% parsed())) {
-        shinyjs$show("data_details_container", anim = TRUE)
+        shinyjs::show("data_details_container", anim = TRUE)
       } else {
-        shinyjs$hide("data_details_container", anim = TRUE)
+        shinyjs::hide("data_details_container", anim = TRUE)
       }
     }))
     
@@ -1252,14 +1148,14 @@ server <- function(id) {
       )
       
       div(
-        style = htmltools::css(
+        style = css(
           display = "flex",
           `align-items` = "center"
         ),
         div(
           style = "flex: 1;",
           div(
-            style = htmltools::css(
+            style = css(
               display = "grid",
               `grid-template-columns` = "repeat(auto-fit, minmax(200px, 1fr))"
             ),
@@ -1329,7 +1225,7 @@ server <- function(id) {
     
     output$explore_data_table <- reactable::renderReactable(execute_safely({
        reactable::reactable(
-         sf$st_drop_geometry(.data() %||% parsed()),
+         sf::st_drop_geometry(.data() %||% parsed()),
          striped = TRUE,
          highlight = TRUE,
          bordered = TRUE,
@@ -1378,25 +1274,48 @@ server <- function(id) {
         "No parameter description can currently be displayed because the parameter database is unavailable. Please try again later."
       }
 
-      widgets$callout(widgets$show_more(HTML(desc)))
+      callout(show_more(HTML(desc)))
     }))
     
     
-    # Update indicator selection ----
+    # Update catalogue selection ----
     observe(execute_safely({
-      new_choices <- gxc:::allowed_indicators_by_catalogue[[catalogue()]]
-      new_choices <- unname(invert(indicators)[new_choices])
-      selected <- isolate(input$indicator)
-      if (!selected %in% new_choices) {
-        selected <- NULL
-      }
-      
-      shinyWidgets::updateVirtualSelect(
-        "indicator",
-        choices = new_choices,
-        selected = selected
+      req(input$indicator)
+      ind <- indicators[input$indicator]
+      in_catalogue <- vapply(
+        gxc:::allowed_indicators_by_catalogue,
+        function(x) ind %in% x,
+        logical(1)
       )
-    }))
+      catas <- names(in_catalogue)[in_catalogue]
+      
+      ## Time level check ----
+      has_time <- vapply(
+        time_levels,
+        function(x) any(grepl(x, catas, ignore.case = TRUE)),
+        logical(1)
+      )
+      
+      n_has_time <- sum(has_time)
+      if (n_has_time == 0) {
+        shinyjs::hide("time_level_container", anim = TRUE)
+      } else if (n_has_time > 0) {
+        new_times <- invert(invert(time_levels)[has_time])
+        freezeReactiveValue(input, "time_level")
+        updateRadioButtons(
+          inputId = "time_level",
+          choices = new_times
+        )
+      }
+
+      ## Land-only check ----
+      if (any(!grepl("land", catas))) {
+        shinyjs::hide("land_container", anim = TRUE)
+      } else {
+        shinyjs::show("land_container", anim = TRUE)
+      }
+    })) |>
+      bindEvent(input$indicator)
 
 
     key <- key_get0("ecmwfr", "ecmwfr")
@@ -1472,7 +1391,7 @@ server <- function(id) {
           }
         },
         error_fun = function(e) {
-          shiny::printError(e)
+          printError(e)
           send_error(
             tagList(
               p("The data provider returned the following error message:"),
@@ -1510,21 +1429,33 @@ server <- function(id) {
               file = file,
               row.names = FALSE
             ),
-            qs = qs2::qs_save(linked(), file),
+            qs = with_package(
+              qs2::qs_save(linked(), file),
+              "haven",
+              "to save .qs files"
+            ),
             rds = saveRDS(linked(), file),
             dta = {
               linked <- linked()
               names(linked) <- gsub("\\.", "", names(linked))
-              haven::write_dta(
-                sf::st_drop_geometry(linked),
-                path = file,
-                version = input$output_stataVersion
+              with_package(
+                haven::write_dta(
+                  sf::st_drop_geometry(linked),
+                  path = file,
+                  version = input$output_stataVersion
+                ),
+                "haven",
+                "to save .dta files"
               )
             },
             sav = {
               linked <- linked()
               names(linked) <- gsub("\\.", "", names(linked))
-              haven::write_sav(sf::st_drop_geometry(linked), path = file)
+              with_package(
+                haven::write_sav(sf::st_drop_geometry(linked), path = file),
+                "haven",
+                "to save .sav files"
+              )
             },
             sf::write_sf(linked(), dsn = file)
           )
@@ -1534,25 +1465,25 @@ server <- function(id) {
     
     
     # Render base map ----
-    output$map <- leaflet$renderLeaflet(execute_safely({
-      leaflet$leaflet(options = leaflet$leafletOptions(zoomControl = FALSE)) |>
-        leaflet$addMapPane("svyPane", zIndex = 210) |>
-        leaflet$addMapPane("eodPane", zIndex = 200) |>
-        leaflet$addProviderTiles(
+    output$map <- leaflet::renderLeaflet(execute_safely({
+      leaflet::leaflet(options = leaflet::leafletOptions(zoomControl = FALSE)) |>
+        leaflet::addMapPane("svyPane", zIndex = 210) |>
+        leaflet::addMapPane("eodPane", zIndex = 200) |>
+        leaflet::addProviderTiles(
           "CartoDB.Positron",
           group = "Light",
           layerId = session$ns("svyTiles"),
-          options = leaflet$tileOptions(pane = "svyPane")
+          options = leaflet::tileOptions(pane = "svyPane")
       ) |>
-        leaflet$addProviderTiles(
+        leaflet::addProviderTiles(
           "CartoDB.DarkMatter",
           group = "Dark",
           layerId = session$ns("eodTiles"),
-          options = leaflet$tileOptions(pane = "eodPane")
+          options = leaflet::tileOptions(pane = "eodPane")
       ) |>
-        #leaflet$addLayersControl(baseGroups = c("Light", "Dark")) |>
-        leaflet$setView(14, 48, 5) |>
-        onRender(
+        #leaflet::addLayersControl(baseGroups = c("Light", "Dark")) |>
+        leaflet::setView(14, 48, 5) |>
+        htmlwidgets::onRender(
           "function(el, x) {
             L.control.zoom({
               position: 'topright'
@@ -1564,10 +1495,10 @@ server <- function(id) {
     
     # Clear map on new file ----
     observe(execute_safely({
-      leaflet$leafletProxy("map") |>
-        leaflet$clearShapes() |>
-        leaflet$clearMarkers() |>
-        leaflet$clearControls() |>
+      leaflet::leafletProxy("map") |>
+        leaflet::clearShapes() |>
+        leaflet::clearMarkers() |>
+        leaflet::clearControls() |>
         removeSidebyside(session$ns("sidebyside"))
     })) |>
       bindEvent(input$file)
@@ -1576,12 +1507,12 @@ server <- function(id) {
     # Add input data to map ----
     observe(execute_safely({
       req(.data(), inherits(.data(), "sf"))
-      .data <- sf$st_transform(.data(), 4326)
-      bbox <- sf$st_bbox(.data)
-      proxy <- leaflet$leafletProxy("map", data = .data) |>
-        leaflet$clearGroup("svyGroup")
+      .data <- sf::st_transform(.data(), 4326)
+      bbox <- sf::st_bbox(.data)
+      proxy <- leaflet::leafletProxy("map", data = .data) |>
+        leaflet::clearGroup("svyGroup")
 
-      leaflet$flyToBounds(
+      leaflet::flyToBounds(
         proxy,
         lng1 = bbox[["xmin"]],
         lat1 = bbox[["ymin"]],
@@ -1600,9 +1531,9 @@ server <- function(id) {
         if (is_datetime) {
           tz <- tz(domain)
           domain <- linux_time(domain)
-          pal <- leaflet$colorNumeric(colors, domain = domain)
+          pal <- leaflet::colorNumeric(colors, domain = domain)
         } else if (is_continuous(domain)) {
-          pal <- leaflet$colorBin(colors, domain = domain)
+          pal <- leaflet::colorBin(colors, domain = domain)
         } else if (is_categorical(domain)) {
           levels <- if (is.factor(domain)) {
             levels(domain)
@@ -1610,7 +1541,7 @@ server <- function(id) {
             sort(unique(domain))
           }
 
-          pal <- leaflet$colorFactor(
+          pal <- leaflet::colorFactor(
             colors,
             domain = domain,
             levels = levels,
@@ -1619,9 +1550,9 @@ server <- function(id) {
         }
       }
 
-      if (all(sf$st_is(.data, c("POLYGON", "MULTIPOLYGON")))) {
+      if (all(sf::st_is(.data, c("POLYGON", "MULTIPOLYGON")))) {
         fill_opacity <- if (showcase_given) 1 else 0.001
-        leaflet$addPolygons(
+        leaflet::addPolygons(
           proxy,
           group = "svyGroup",
           weight = 1,
@@ -1634,7 +1565,7 @@ server <- function(id) {
           },
           fillOpacity = fill_opacity,
           opacity = 0.5,
-          highlightOptions = leaflet$highlightOptions(
+          highlightOptions = leaflet::highlightOptions(
             weight = 2,
             color = "black",
             opacity = 0.5,
@@ -1642,10 +1573,10 @@ server <- function(id) {
             bringToFront = TRUE,
             sendToBack = TRUE
           ),
-          options = leaflet$pathOptions(pane = "svyPane")
+          options = leaflet::pathOptions(pane = "svyPane")
         )
-      } else if (all(sf$st_is(.data, c("POINT", "MULTIPOINT")))) {
-        leaflet$addCircleMarkers(
+      } else if (all(sf::st_is(.data, c("POINT", "MULTIPOINT")))) {
+        leaflet::addCircleMarkers(
           proxy,
           group = "svyGroup",
           radius = 0.5,
@@ -1656,12 +1587,12 @@ server <- function(id) {
           },
           opacity = 1,
           fillOpacity = 1,
-          options = leaflet$pathOptions(pane = "svyPane")
+          options = leaflet::pathOptions(pane = "svyPane")
         )
       }
 
       if (showcase_given) {
-        leaflet$addLegend(
+        leaflet::addLegend(
           proxy,
           position = "bottomleft",
           layerId = session$ns("svyLegend"),
@@ -1703,12 +1634,12 @@ server <- function(id) {
       linked <- linked()
       req(linked)
       execute_safely({
-        .data <- sf$st_transform(linked, 4326)
-        bbox <- sf$st_bbox(.data)
-        proxy <- leaflet$leafletProxy("map", data = .data) |>
-          leaflet$clearGroup("eodGroup")
+        .data <- sf::st_transform(linked, 4326)
+        bbox <- sf::st_bbox(.data)
+        proxy <- leaflet::leafletProxy("map", data = .data) |>
+          leaflet::clearGroup("eodGroup")
         
-        leaflet$flyToBounds(
+        leaflet::flyToBounds(
           proxy,
           lng1 = bbox[["xmin"]],
           lat1 = bbox[["ymin"]],
@@ -1716,10 +1647,10 @@ server <- function(id) {
           lat2 = bbox[["ymax"]]
         )
         
-        palette <- leaflet$colorBin(palette = "viridis", domain = .data$.linked)
+        palette <- leaflet::colorBin(palette = "viridis", domain = .data$.linked)
         
-        if (all(sf$st_is(.data, c("POLYGON", "MULTIPOLYGON")))) {
-          leaflet$addPolygons(
+        if (all(sf::st_is(.data, c("POLYGON", "MULTIPOLYGON")))) {
+          leaflet::addPolygons(
             proxy,
             group = "eodGroup",
             weight = 1,
@@ -1728,7 +1659,7 @@ server <- function(id) {
             fillColor = ~palette(.linked),
             fillOpacity = 0.8,
             opacity = 0.5,
-            highlightOptions = leaflet$highlightOptions(
+            highlightOptions = leaflet::highlightOptions(
               weight = 2,
               color = "black",
               opacity = 0.1,
@@ -1736,10 +1667,10 @@ server <- function(id) {
               bringToFront = TRUE,
               sendToBack = TRUE
             ),
-            options = leaflet$pathOptions(pane = "eodPane")
+            options = leaflet::pathOptions(pane = "eodPane")
           )
-        } else if (all(sf$st_is(.data, c("POINT", "MULTIPOINT")))) {
-          leaflet$addCircleMarkers(
+        } else if (all(sf::st_is(.data, c("POINT", "MULTIPOINT")))) {
+          leaflet::addCircleMarkers(
             proxy,
             group = "eodGroup",
             weight = 1,
@@ -1747,11 +1678,11 @@ server <- function(id) {
             fill = TRUE,
             fillColor = ~.linked,
             opacity = 0.5,
-            options = leaflet$pathOptions(pane = "eodPane")
+            options = leaflet::pathOptions(pane = "eodPane")
           )
         }
         
-        leaflet$addLegend(
+        leaflet::addLegend(
           proxy,
           "bottomright",
           layerId = session$ns("eodLegend"),

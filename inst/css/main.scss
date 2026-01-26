@@ -29,13 +29,13 @@ body {
 }
 
 
-#app-layout-title {
+#layout-title {
   font-weight: bold;
   font-size: 30px;
 }
 
 
-#app-layout-brand {
+#layout-brand {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
@@ -43,7 +43,7 @@ body {
 }
 
 
-#app-layout-logo {
+#layout-logo {
   height: 50px;
   display: block;
   width: auto;

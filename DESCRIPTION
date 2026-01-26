@@ -1,0 +1,43 @@
+Package: earthlinks
+Type: Package
+Title: Interactive 'shiny' application facilitating spatial linking of
+    earth observation data for social scientists and others. Based on the 'gxc'
+    package.
+Version: 0.0.0.9000
+Authors@R: 
+    person("Jonas", "Lieth", , "jslth@outlook.com", role = c("cre", "aut", "cph"),
+           comment = c(ORCID = "0000-0002-3451-3176"))
+Maintainer: Jonas Lieth <jslth@outlook.com>
+Description: What the package does (one paragraph).
+License: MIT + file LICENSE
+URL: https://github.com/jslth/earthlinks/, https://jslth.github.io/earthlinks/
+BugReports: https://github.com/jslth/earthlinks/issues
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Imports: 
+    bsicons,
+    bslib,
+    countrycode,
+    fontawesome,
+    geolink,
+    giscoR,
+    gxc,
+    htmlwidgets,
+    httr2,
+    leaflet,
+    leaflet.extras2,
+    reactable,
+    sf,
+    shiny,
+    shinyjs,
+    shinyWidgets,
+    stats,
+    tools,
+    utils
+Suggests:
+    fansi,
+    haven,
+    qs2,
+    readr,
+    sever
