@@ -41,3 +41,6 @@ Suggests:
     qs2,
     readr,
     sever
+Remotes:
+    denabel/gxc,
+    jslth/geolink
